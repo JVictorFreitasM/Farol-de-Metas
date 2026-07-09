@@ -1,0 +1,174 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  responsavel
+  gerente
+  admin
+
+  @@map("user_role")
+}
+
+enum IcIv {
+  IC
+  IV
+
+  @@map("ic_iv_type")
+}
+
+enum TipoMeta {
+  maior_melhor
+  menor_melhor
+
+  @@map("tipo_meta_type")
+}
+
+enum StatusMeta {
+  ok
+  nok
+
+  @@map("status_meta_type")
+}
+
+enum AcaoAuditoria {
+  CREATE
+  READ
+  UPDATE
+  DELETE
+
+  @@map("acao_auditoria_type")
+}
+
+model Setor {
+  id            String   @id @default(uuid()) @db.Uuid
+  nome          String   @unique @db.VarChar(255)
+  email         String?  @unique @db.VarChar(255)
+  ativo         Boolean  @default(true)
+  criadoEm      DateTime @default(now()) @map("criado_em")
+  atualizadoEm  DateTime @default(now()) @map("atualizado_em")
+
+  usuarios      Usuario[]
+  metas         Meta[]
+  auditorias    Auditoria[]
+
+  @@index([nome])
+  @@index([email])
+  @@map("setores")
+}
+
+model Usuario {
+  id            String    @id @default(uuid()) @db.Uuid
+  email         String    @unique @db.VarChar(255)
+  senhaHash     String    @map("senha_hash") @db.VarChar(255)
+  setorId       String?   @map("setor_id") @db.Uuid
+  setor         Setor?    @relation(fields: [setorId], references: [id])
+  nome          String    @db.VarChar(255)
+  role          UserRole
+  ativo         Boolean   @default(true)
+  ultimoAcesso  DateTime? @map("ultimo_acesso")
+  criadoEm      DateTime  @default(now()) @map("criado_em")
+  atualizadoEm  DateTime  @default(now()) @map("atualizado_em")
+
+  metasAtualizadas Meta[]           @relation("MetaAtualizadoPor")
+  historicos       MetaHistorico[]
+  auditorias       Auditoria[]
+
+  @@index([email])
+  @@index([setorId])
+  @@index([role])
+  @@map("usuarios")
+}
+
+model Meta {
+  id            String    @id @default(uuid()) @db.Uuid
+  setorId       String    @map("setor_id") @db.Uuid
+  setor         Setor     @relation(fields: [setorId], references: [id])
+  ano           Int
+  produto       String    @db.VarChar(255)
+  icIv          IcIv      @map("ic_iv")
+  paiId         String?   @map("pai_id") @db.Uuid
+  pai           Meta?     @relation("MetaHierarquia", fields: [paiId], references: [id])
+  filhos        Meta[]    @relation("MetaHierarquia")
+  indicador     String    @db.VarChar(255)
+  responsavel   String    @db.VarChar(255)
+  unidade       String    @db.VarChar(50)
+  tipoMeta      TipoMeta  @map("tipo_meta")
+  metaAno       Decimal?  @map("meta_ano") @db.Decimal(15, 2)
+
+  valorJan      Decimal?  @map("valor_jan") @db.Decimal(15, 2)
+  valorFev      Decimal?  @map("valor_fev") @db.Decimal(15, 2)
+  valorMar      Decimal?  @map("valor_mar") @db.Decimal(15, 2)
+  valorAbr      Decimal?  @map("valor_abr") @db.Decimal(15, 2)
+  valorMai      Decimal?  @map("valor_mai") @db.Decimal(15, 2)
+  valorJun      Decimal?  @map("valor_jun") @db.Decimal(15, 2)
+  valorJul      Decimal?  @map("valor_jul") @db.Decimal(15, 2)
+  valorAgo      Decimal?  @map("valor_ago") @db.Decimal(15, 2)
+  valorSet      Decimal?  @map("valor_set") @db.Decimal(15, 2)
+  valorOut      Decimal?  @map("valor_out") @db.Decimal(15, 2)
+  valorNov      Decimal?  @map("valor_nov") @db.Decimal(15, 2)
+  valorDez      Decimal?  @map("valor_dez") @db.Decimal(15, 2)
+
+  /// Coluna gerada pelo banco (GENERATED ALWAYS AS). Não gravar via Prisma Client.
+  acumulado     Decimal?    @map("acumulado") @db.Decimal(15, 2)
+  /// Coluna gerada pelo banco (GENERATED ALWAYS AS). Não gravar via Prisma Client.
+  status        StatusMeta? @map("status")
+  /// Coluna gerada pelo banco (GENERATED ALWAYS AS). Não gravar via Prisma Client.
+  editavel      Boolean?    @map("editavel")
+
+  criadoEm      DateTime  @default(now()) @map("criado_em")
+  atualizadoEm  DateTime  @default(now()) @map("atualizado_em")
+  atualizadoPor String?   @map("atualizado_por") @db.Uuid
+  atualizadoPorUsuario Usuario? @relation("MetaAtualizadoPor", fields: [atualizadoPor], references: [id])
+
+  historicos    MetaHistorico[]
+
+  @@index([setorId])
+  @@index([ano])
+  @@index([icIv])
+  @@index([paiId])
+  @@index([setorId, ano])
+  @@map("metas")
+}
+
+model MetaHistorico {
+  id            String   @id @default(uuid()) @db.Uuid
+  metasId       String   @map("metas_id") @db.Uuid
+  meta          Meta     @relation(fields: [metasId], references: [id])
+  versao        Int
+  valoresAntes  Json?    @map("valores_antes")
+  valoresDepois Json     @map("valores_depois")
+  alteradoPor   String?  @map("alterado_por") @db.Uuid
+  alteradoPorUsuario Usuario? @relation(fields: [alteradoPor], references: [id])
+  alteradoEm    DateTime @default(now()) @map("alterado_em")
+  motivo        String?
+
+  @@index([metasId])
+  @@index([alteradoEm])
+  @@map("metas_historico")
+}
+
+model Auditoria {
+  id          String        @id @default(uuid()) @db.Uuid
+  setorId     String?       @map("setor_id") @db.Uuid
+  setor       Setor?        @relation(fields: [setorId], references: [id])
+  usuarioId   String?       @map("usuario_id") @db.Uuid
+  usuario     Usuario?      @relation(fields: [usuarioId], references: [id])
+  acao        AcaoAuditoria
+  tabela      String        @db.VarChar(50)
+  registroId  String?       @map("registro_id") @db.Uuid
+  ipAddress   String?       @map("ip_address") @db.VarChar(45)
+  timestamp   DateTime      @default(now())
+  detalhes    Json?
+
+  @@index([setorId])
+  @@index([usuarioId])
+  @@index([timestamp])
+  @@index([acao])
+  @@map("auditoria")
+}
