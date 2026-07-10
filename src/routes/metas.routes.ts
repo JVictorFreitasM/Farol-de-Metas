@@ -2,12 +2,11 @@ import { Router } from "express";
 import { z } from "zod";
 import { IcIv, Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma";
-import { authenticate, resolveSetorId } from "../middleware/auth";
+import { authenticate, authorize, resolveSetorId } from "../middleware/auth";
 import { badRequest, conflict, forbidden, notFound } from "../lib/errors";
-import { parsePagination, paginatedResponse } from "../lib/pagination";
 import { registrarAuditoria } from "../lib/auditoria";
 import { serializeMeta } from "../lib/serializers";
-import { calcularAgregadoIC } from "../lib/metasCalc";
+import { calcularAcumuladoLinha, MESES, recalcularAgregadoIC } from "../lib/metasCalc";
 
 export const metasRouter = Router();
 metasRouter.use(authenticate);
@@ -18,78 +17,178 @@ const includeRelacoes = {
   filhos: true,
 } satisfies Prisma.MetaInclude;
 
+/** Após alterar meta_x ou real_x de uma linha, recalcula seus acumulados e, se ela tiver
+ * um IC pai com agrega_filhos=true, recalcula os meses e acumulados do pai também. */
+async function recalcularLinhaEPai(metaId: string, usuarioId: string) {
+  const meta = await prisma.meta.findUniqueOrThrow({ where: { id: metaId } });
+
+  await prisma.meta.update({
+    where: { id: meta.id },
+    data: {
+      acumMeta: calcularAcumuladoLinha(meta, "meta"),
+      acumReal: calcularAcumuladoLinha(meta, "real"),
+      atualizadoPor: usuarioId,
+    },
+  });
+
+  if (!meta.paiId) return null;
+
+  const pai = await prisma.meta.findUnique({ where: { id: meta.paiId } });
+  if (!pai || !pai.agregaFilhos) return null;
+
+  const filhos = await prisma.meta.findMany({ where: { paiId: pai.id } });
+  const agregado = recalcularAgregadoIC(filhos);
+
+  const dataMeses = Object.fromEntries(MESES.map((mes) => [`meta${mes}`, agregado.metaPorMes[mes]]));
+
+  const paiAtualizado = await prisma.meta.update({
+    where: { id: pai.id },
+    data: {
+      ...dataMeses,
+      acumMeta: agregado.acumMeta,
+      acumReal: agregado.acumReal,
+      atualizadoPor: usuarioId,
+    },
+  });
+
+  return paiAtualizado;
+}
+
 const listQuerySchema = z.object({
   setor_id: z.string().uuid().optional(),
   ano: z.coerce.number().int(),
-  ic_iv: z.nativeEnum(IcIv).optional(),
-  produto: z.string().optional(),
-  indicador: z.string().optional(),
 });
 
 metasRouter.get("/", async (req, res, next) => {
   try {
     const query = listQuerySchema.parse(req.query);
     const setorId = resolveSetorId(req.usuario!, query.setor_id);
-    const pagination = parsePagination(req);
 
-    const where: Prisma.MetaWhereInput = {
-      setorId,
-      ano: query.ano,
-      ...(query.ic_iv ? { icIv: query.ic_iv } : {}),
-      ...(query.produto ? { produto: { contains: query.produto, mode: "insensitive" } } : {}),
-      ...(query.indicador ? { indicador: { contains: query.indicador, mode: "insensitive" } } : {}),
-    };
+    const metas = await prisma.meta.findMany({
+      where: { setorId, ano: query.ano },
+      include: includeRelacoes,
+      orderBy: { ordem: "asc" },
+    });
 
-    const [metas, total] = await prisma.$transaction([
-      prisma.meta.findMany({
-        where,
-        include: includeRelacoes,
-        orderBy: { criadoEm: "asc" },
-        skip: pagination.skip,
-        take: pagination.limite,
-      }),
-      prisma.meta.count({ where }),
-    ]);
-
-    res.json(paginatedResponse(metas.map(serializeMeta), total, pagination));
+    res.json({ data: metas.map(serializeMeta) });
   } catch (err) {
     next(err);
   }
 });
 
-const updateBodySchema = z.object({
-  meta_ano: z.number().optional(),
-  valor_jan: z.number().optional(),
-  valor_fev: z.number().optional(),
-  valor_mar: z.number().optional(),
-  valor_abr: z.number().optional(),
-  valor_mai: z.number().optional(),
-  valor_jun: z.number().optional(),
-  valor_jul: z.number().optional(),
-  valor_ago: z.number().optional(),
-  valor_set: z.number().optional(),
-  valor_out: z.number().optional(),
-  valor_nov: z.number().optional(),
-  valor_dez: z.number().optional(),
+const mesesSchema = z.object({
+  jan: z.number().optional(),
+  fev: z.number().optional(),
+  mar: z.number().optional(),
+  abr: z.number().optional(),
+  mai: z.number().optional(),
+  jun: z.number().optional(),
+  jul: z.number().optional(),
+  ago: z.number().optional(),
+  set: z.number().optional(),
+  out: z.number().optional(),
+  nov: z.number().optional(),
+  dez: z.number().optional(),
 });
 
-metasRouter.put("/:id", async (req, res, next) => {
+const criarMetaSchema = z.object({
+  setor_id: z.string().uuid(),
+  ano: z.coerce.number().int(),
+  ordem: z.number().int().default(0),
+  produto: z.string().optional(),
+  ic_iv: z.nativeEnum(IcIv),
+  pai_id: z.string().uuid().optional(),
+  indicador: z.string().min(1),
+  responsavel: z.string().min(1),
+  unidade: z.string().min(1),
+  tipo_meta: z.enum(["maior_melhor", "menor_melhor"]),
+  agrega_filhos: z.boolean().default(false),
+  tipo_acumulado: z.enum(["soma", "media"]).default("soma"),
+  meta_ano: z.number().optional(),
+  meta: mesesSchema.optional(),
+});
+
+metasRouter.post("/", authorize("gerente", "admin"), async (req, res, next) => {
   try {
-    const body = updateBodySchema.parse(req.body);
+    const body = criarMetaSchema.parse(req.body);
+    const usuario = req.usuario!;
+
+    if (body.ic_iv === "IV" && !body.pai_id) {
+      throw badRequest("IVs devem ter um IC pai (pai_id)");
+    }
+    if (body.ic_iv === "IC" && body.pai_id) {
+      throw badRequest("ICs não podem ter pai_id");
+    }
+
+    const meta = await prisma.meta.create({
+      data: {
+        setorId: body.setor_id,
+        ano: body.ano,
+        ordem: body.ordem,
+        produto: body.produto,
+        icIv: body.ic_iv,
+        paiId: body.pai_id,
+        indicador: body.indicador,
+        responsavel: body.responsavel,
+        unidade: body.unidade,
+        tipoMeta: body.tipo_meta,
+        agregaFilhos: body.agrega_filhos,
+        tipoAcumulado: body.tipo_acumulado,
+        metaAno: body.meta_ano,
+        metaJan: body.meta?.jan,
+        metaFev: body.meta?.fev,
+        metaMar: body.meta?.mar,
+        metaAbr: body.meta?.abr,
+        metaMai: body.meta?.mai,
+        metaJun: body.meta?.jun,
+        metaJul: body.meta?.jul,
+        metaAgo: body.meta?.ago,
+        metaSet: body.meta?.set,
+        metaOut: body.meta?.out,
+        metaNov: body.meta?.nov,
+        metaDez: body.meta?.dez,
+        atualizadoPor: usuario.id,
+      },
+    });
+
+    await registrarAuditoria(req, {
+      acao: "CREATE",
+      tabela: "metas",
+      registroId: meta.id,
+      setorId: meta.setorId,
+    });
+
+    const paiAtualizado = await recalcularLinhaEPai(meta.id, usuario.id);
+
+    res.status(201).json({
+      ...serializeMeta(meta),
+      ...(paiAtualizado ? { pai_atualizado: serializeMeta(paiAtualizado) } : {}),
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+const editarMetaSchema = z.object({
+  meta_ano: z.number().optional(),
+  meta: mesesSchema.optional(),
+});
+
+metasRouter.put("/:id/meta", authorize("gerente", "admin"), async (req, res, next) => {
+  try {
+    const body = editarMetaSchema.parse(req.body);
     const usuario = req.usuario!;
 
     const metaAtual = await prisma.meta.findUnique({ where: { id: req.params.id } });
     if (!metaAtual) throw notFound("Meta não encontrada");
 
-    if (metaAtual.icIv === "IC") {
-      throw conflict("IC com IVs não pode ser editado diretamente. Edite os IVs filhos.");
-    }
-    if (usuario.role === "responsavel" && metaAtual.setorId !== usuario.setorId) {
-      throw forbidden("Acesso negado a outro setor");
+    if (metaAtual.agregaFilhos) {
+      throw conflict("Este IC agrega os valores dos filhos automaticamente e não pode ser editado diretamente.");
     }
 
     if (metaAtual.tipoMeta === "maior_melhor") {
-      for (const [campo, valor] of Object.entries(body)) {
+      const valores = { meta_ano: body.meta_ano, ...body.meta };
+      for (const [campo, valor] of Object.entries(valores)) {
         if (typeof valor === "number" && valor < 0) {
           throw badRequest(`Campo '${campo}' não pode ser negativo`);
         }
@@ -101,7 +200,19 @@ metasRouter.put("/:id", async (req, res, next) => {
     const metaAtualizada = await prisma.meta.update({
       where: { id: metaAtual.id },
       data: {
-        ...body,
+        metaAno: body.meta_ano,
+        metaJan: body.meta?.jan,
+        metaFev: body.meta?.fev,
+        metaMar: body.meta?.mar,
+        metaAbr: body.meta?.abr,
+        metaMai: body.meta?.mai,
+        metaJun: body.meta?.jun,
+        metaJul: body.meta?.jul,
+        metaAgo: body.meta?.ago,
+        metaSet: body.meta?.set,
+        metaOut: body.meta?.out,
+        metaNov: body.meta?.nov,
+        metaDez: body.meta?.dez,
         atualizadoPor: usuario.id,
       },
     });
@@ -124,154 +235,140 @@ metasRouter.put("/:id", async (req, res, next) => {
       detalhes: { campos_alterados: body },
     });
 
-    let paiAtualizado = null;
-    if (metaAtualizada.paiId) {
-      const filhos = await prisma.meta.findMany({ where: { paiId: metaAtualizada.paiId } });
-      const pai = await prisma.meta.findUnique({ where: { id: metaAtualizada.paiId } });
-      if (pai) {
-        const agregado = calcularAgregadoIC(filhos);
-        paiAtualizado = {
-          id: pai.id,
-          indicador: pai.indicador,
-          meta_ano: agregado.metaAno,
-          acumulado: agregado.acumulado,
-          status: agregado.status,
-        };
-      }
-    }
-
-    const usuarioResp = await prisma.usuario.findUnique({ where: { id: usuario.id } });
+    const paiAtualizado = await recalcularLinhaEPai(metaAtualizada.id, usuario.id);
+    const metaFinal = await prisma.meta.findUniqueOrThrow({
+      where: { id: metaAtualizada.id },
+      include: includeRelacoes,
+    });
 
     res.json({
-      id: metaAtualizada.id,
-      ic_iv: metaAtualizada.icIv,
-      indicador: metaAtualizada.indicador,
-      valor_jan: metaAtualizada.valorJan,
-      valor_fev: metaAtualizada.valorFev,
-      valor_mar: metaAtualizada.valorMar,
-      valor_abr: metaAtualizada.valorAbr,
-      valor_mai: metaAtualizada.valorMai,
-      valor_jun: metaAtualizada.valorJun,
-      valor_jul: metaAtualizada.valorJul,
-      valor_ago: metaAtualizada.valorAgo,
-      valor_set: metaAtualizada.valorSet,
-      valor_out: metaAtualizada.valorOut,
-      valor_nov: metaAtualizada.valorNov,
-      valor_dez: metaAtualizada.valorDez,
-      meta_ano: metaAtualizada.metaAno,
-      acumulado: metaAtualizada.acumulado,
-      status: metaAtualizada.status,
-      atualizado_em: metaAtualizada.atualizadoEm,
-      atualizado_por_usuario: usuarioResp?.nome ?? null,
-      meta_editada: true,
-      ...(paiAtualizado ? { pai_atualizado: paiAtualizado } : {}),
+      ...serializeMeta(metaFinal),
+      ...(paiAtualizado ? { pai_atualizado: serializeMeta(paiAtualizado) } : {}),
     });
   } catch (err) {
     next(err);
   }
 });
 
-const duplicarBodySchema = z.object({
-  ano_novo: z.coerce.number().int(),
-  resetar_valores: z.boolean().default(true),
+const editarRealSchema = z.object({
+  real: mesesSchema,
 });
 
-metasRouter.post("/:id/duplicar", async (req, res, next) => {
+metasRouter.put("/:id/real", authorize("responsavel"), async (req, res, next) => {
   try {
-    const { ano_novo, resetar_valores } = duplicarBodySchema.parse(req.body);
+    const body = editarRealSchema.parse(req.body);
     const usuario = req.usuario!;
 
-    const metaOrigem = await prisma.meta.findUnique({
-      where: { id: req.params.id },
-      include: { filhos: true },
-    });
-    if (!metaOrigem) throw notFound("Meta não encontrada");
-    if (usuario.role === "responsavel" && metaOrigem.setorId !== usuario.setorId) {
+    const metaAtual = await prisma.meta.findUnique({ where: { id: req.params.id } });
+    if (!metaAtual) throw notFound("Meta não encontrada");
+
+    if (metaAtual.setorId !== usuario.setorId) {
       throw forbidden("Acesso negado a outro setor");
     }
 
-    const criados: { id: string; indicador: string; ano: number; meta_ano: unknown; valores_zerados: boolean }[] = [];
+    if (metaAtual.agregaFilhos) {
+      throw conflict("Este IC agrega os valores dos filhos automaticamente e não pode ser editado diretamente.");
+    }
 
-    await prisma.$transaction(async (tx) => {
-      const duplicarUm = async (origem: typeof metaOrigem, paiIdNovo: string | null) => {
-        const valores = resetar_valores
-          ? {
-              valorJan: null,
-              valorFev: null,
-              valorMar: null,
-              valorAbr: null,
-              valorMai: null,
-              valorJun: null,
-              valorJul: null,
-              valorAgo: null,
-              valorSet: null,
-              valorOut: null,
-              valorNov: null,
-              valorDez: null,
-            }
-          : {
-              valorJan: origem.valorJan,
-              valorFev: origem.valorFev,
-              valorMar: origem.valorMar,
-              valorAbr: origem.valorAbr,
-              valorMai: origem.valorMai,
-              valorJun: origem.valorJun,
-              valorJul: origem.valorJul,
-              valorAgo: origem.valorAgo,
-              valorSet: origem.valorSet,
-              valorOut: origem.valorOut,
-              valorNov: origem.valorNov,
-              valorDez: origem.valorDez,
-            };
-
-        const novo = await tx.meta.create({
-          data: {
-            setorId: origem.setorId,
-            ano: ano_novo,
-            produto: origem.produto,
-            icIv: origem.icIv,
-            paiId: paiIdNovo,
-            indicador: origem.indicador,
-            responsavel: origem.responsavel,
-            unidade: origem.unidade,
-            tipoMeta: origem.tipoMeta,
-            metaAno: origem.metaAno,
-            ...valores,
-            atualizadoPor: usuario.id,
-          },
-        });
-
-        criados.push({
-          id: novo.id,
-          indicador: novo.indicador,
-          ano: novo.ano,
-          meta_ano: novo.metaAno,
-          valores_zerados: resetar_valores,
-        });
-
-        if (origem.icIv === "IC") {
-          const filhos = await tx.meta.findMany({ where: { paiId: origem.id } });
-          for (const filho of filhos) {
-            await duplicarUm({ ...filho, filhos: [] } as typeof metaOrigem, novo.id);
-          }
+    if (metaAtual.tipoMeta === "maior_melhor") {
+      for (const [campo, valor] of Object.entries(body.real)) {
+        if (typeof valor === "number" && valor < 0) {
+          throw badRequest(`Campo '${campo}' não pode ser negativo`);
         }
-      };
+      }
+    }
 
-      await duplicarUm(metaOrigem, metaOrigem.paiId);
+    const valoresAntes = { ...metaAtual };
+
+    const metaAtualizada = await prisma.meta.update({
+      where: { id: metaAtual.id },
+      data: {
+        realJan: body.real.jan,
+        realFev: body.real.fev,
+        realMar: body.real.mar,
+        realAbr: body.real.abr,
+        realMai: body.real.mai,
+        realJun: body.real.jun,
+        realJul: body.real.jul,
+        realAgo: body.real.ago,
+        realSet: body.real.set,
+        realOut: body.real.out,
+        realNov: body.real.nov,
+        realDez: body.real.dez,
+        atualizadoPor: usuario.id,
+      },
+    });
+
+    await prisma.metaHistorico.create({
+      data: {
+        metasId: metaAtualizada.id,
+        versao: (await prisma.metaHistorico.count({ where: { metasId: metaAtualizada.id } })) + 1,
+        valoresAntes: JSON.parse(JSON.stringify(valoresAntes)),
+        valoresDepois: JSON.parse(JSON.stringify(metaAtualizada)),
+        alteradoPor: usuario.id,
+      },
     });
 
     await registrarAuditoria(req, {
-      acao: "CREATE",
+      acao: "UPDATE",
       tabela: "metas",
-      registroId: metaOrigem.id,
-      setorId: metaOrigem.setorId,
-      detalhes: { ano_novo, resetar_valores, metas_criadas: criados.length },
+      registroId: metaAtualizada.id,
+      setorId: metaAtualizada.setorId,
+      detalhes: { campos_alterados: body },
     });
 
-    res.status(201).json({
-      metas_criadas: criados.length,
-      detalhes: criados,
+    const paiAtualizado = await recalcularLinhaEPai(metaAtualizada.id, usuario.id);
+    const metaFinal = await prisma.meta.findUniqueOrThrow({
+      where: { id: metaAtualizada.id },
+      include: includeRelacoes,
     });
+
+    res.json({
+      ...serializeMeta(metaFinal),
+      ...(paiAtualizado ? { pai_atualizado: serializeMeta(paiAtualizado) } : {}),
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+metasRouter.delete("/:id", authorize("gerente", "admin"), async (req, res, next) => {
+  try {
+    const usuario = req.usuario!;
+    const meta = await prisma.meta.findUnique({ where: { id: req.params.id } });
+    if (!meta) throw notFound("Meta não encontrada");
+
+    await prisma.$transaction(async (tx) => {
+      const filhosIds = meta.icIv === "IC" ? (await tx.meta.findMany({ where: { paiId: meta.id }, select: { id: true } })).map((f) => f.id) : [];
+      const idsParaRemover = [meta.id, ...filhosIds];
+
+      await tx.metaHistorico.deleteMany({ where: { metasId: { in: idsParaRemover } } });
+      await tx.meta.deleteMany({ where: { id: { in: filhosIds } } });
+      await tx.meta.delete({ where: { id: meta.id } });
+    });
+
+    await registrarAuditoria(req, {
+      acao: "DELETE",
+      tabela: "metas",
+      registroId: meta.id,
+      setorId: meta.setorId,
+    });
+
+    let paiAtualizado = null;
+    if (meta.paiId) {
+      const pai = await prisma.meta.findUnique({ where: { id: meta.paiId } });
+      if (pai?.agregaFilhos) {
+        const filhos = await prisma.meta.findMany({ where: { paiId: pai.id } });
+        const agregado = recalcularAgregadoIC(filhos);
+        const dataMeses = Object.fromEntries(MESES.map((mes) => [`meta${mes}`, agregado.metaPorMes[mes]]));
+        paiAtualizado = await prisma.meta.update({
+          where: { id: pai.id },
+          data: { ...dataMeses, acumMeta: agregado.acumMeta, acumReal: agregado.acumReal, atualizadoPor: usuario.id },
+        });
+      }
+    }
+
+    res.status(200).json(paiAtualizado ? { pai_atualizado: serializeMeta(paiAtualizado) } : {});
   } catch (err) {
     next(err);
   }

@@ -12,16 +12,35 @@ export interface Usuario {
   role: Role;
 }
 
+export interface Setor {
+  id: string;
+  nome: string;
+  email: string | null;
+}
+
 export const MESES = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"] as const;
 export type Mes = (typeof MESES)[number];
+export const MESES_LABEL: Record<Mes, string> = {
+  jan: "Jan", fev: "Fev", mar: "Mar", abr: "Abr", mai: "Mai", jun: "Jun",
+  jul: "Jul", ago: "Ago", set: "Set", out: "Out", nov: "Nov", dez: "Dez",
+};
 
 export interface MetaFilho {
   id: string;
   ic_iv: IcIv;
   indicador: string;
-  acumulado: string | number | null;
+  acum_meta: string | number | null;
+  acum_real: string | number | null;
+  status_acum: StatusMeta | null;
+}
+
+export interface MesValores {
+  meta: string | number | null;
+  real: string | number | null;
   status: StatusMeta | null;
 }
+
+export type MesesMeta = Record<Mes, MesValores>;
 
 export interface Meta {
   id: string;
@@ -29,28 +48,20 @@ export interface Meta {
   nome_setor?: string;
   pai_id: string | null;
   ano: number;
-  produto: string;
+  ordem: number;
+  produto: string | null;
   ic_iv: IcIv;
   indicador: string;
   responsavel: string;
   unidade: string;
   tipo_meta: TipoMeta;
+  agrega_filhos: boolean;
+  tipo_acumulado: "soma" | "media";
   meta_ano: string | number | null;
-  valor_jan: string | number | null;
-  valor_fev: string | number | null;
-  valor_mar: string | number | null;
-  valor_abr: string | number | null;
-  valor_mai: string | number | null;
-  valor_jun: string | number | null;
-  valor_jul: string | number | null;
-  valor_ago: string | number | null;
-  valor_set: string | number | null;
-  valor_out: string | number | null;
-  valor_nov: string | number | null;
-  valor_dez: string | number | null;
-  acumulado: string | number | null;
-  status: StatusMeta | null;
-  editavel: boolean;
+  meses: MesesMeta;
+  acum_meta: string | number | null;
+  acum_real: string | number | null;
+  status_acum: StatusMeta | null;
   atualizado_por_usuario: string | null;
   atualizado_em: string;
   filhos?: MetaFilho[];
@@ -75,7 +86,7 @@ export interface DashboardResumo {
     percentual_atingimento: number;
   };
   metas_por_status: { status: StatusMeta; quantidade: number; exemplos: string[] }[];
-  evolucao_mensal: { mes: string; status_ok: number; status_nok: number; acumulado_geral: string | number }[];
+  evolucao_mensal: { mes: string; status_ok: number; status_nok: number }[];
   ic_com_problemas: {
     indicador: string;
     acumulado: string | number;

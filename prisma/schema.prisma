@@ -46,16 +46,16 @@ enum AcaoAuditoria {
 }
 
 model Setor {
-  id            String   @id @default(uuid()) @db.Uuid
-  nome          String   @unique @db.VarChar(255)
-  email         String?  @unique @db.VarChar(255)
-  ativo         Boolean  @default(true)
-  criadoEm      DateTime @default(now()) @map("criado_em")
-  atualizadoEm  DateTime @default(now()) @map("atualizado_em")
+  id           String   @id @default(uuid()) @db.Uuid
+  nome         String   @unique @db.VarChar(255)
+  email        String?  @unique @db.VarChar(255)
+  ativo        Boolean  @default(true)
+  criadoEm     DateTime @default(now()) @map("criado_em")
+  atualizadoEm DateTime @default(now()) @map("atualizado_em")
 
-  usuarios      Usuario[]
-  metas         Meta[]
-  auditorias    Auditoria[]
+  usuarios   Usuario[]
+  metas      Meta[]
+  auditorias Auditoria[]
 
   @@index([nome])
   @@index([email])
@@ -63,19 +63,19 @@ model Setor {
 }
 
 model Usuario {
-  id            String    @id @default(uuid()) @db.Uuid
-  email         String    @unique @db.VarChar(255)
-  senhaHash     String    @map("senha_hash") @db.VarChar(255)
-  setorId       String?   @map("setor_id") @db.Uuid
-  setor         Setor?    @relation(fields: [setorId], references: [id])
-  nome          String    @db.VarChar(255)
-  role          UserRole
-  ativo         Boolean   @default(true)
-  ultimoAcesso  DateTime? @map("ultimo_acesso")
-  criadoEm      DateTime  @default(now()) @map("criado_em")
-  atualizadoEm  DateTime  @default(now()) @map("atualizado_em")
+  id           String    @id @default(uuid()) @db.Uuid
+  email        String    @unique @db.VarChar(255)
+  senhaHash    String    @map("senha_hash") @db.VarChar(255)
+  setorId      String?   @map("setor_id") @db.Uuid
+  setor        Setor?    @relation(fields: [setorId], references: [id])
+  nome         String    @db.VarChar(255)
+  role         UserRole
+  ativo        Boolean   @default(true)
+  ultimoAcesso DateTime? @map("ultimo_acesso")
+  criadoEm     DateTime  @default(now()) @map("criado_em")
+  atualizadoEm DateTime  @default(now()) @map("atualizado_em")
 
-  metasAtualizadas Meta[]           @relation("MetaAtualizadoPor")
+  metasAtualizadas Meta[]          @relation("MetaAtualizadoPor")
   historicos       MetaHistorico[]
   auditorias       Auditoria[]
 
@@ -86,53 +86,113 @@ model Usuario {
 }
 
 model Meta {
-  id            String    @id @default(uuid()) @db.Uuid
-  setorId       String    @map("setor_id") @db.Uuid
-  setor         Setor     @relation(fields: [setorId], references: [id])
-  ano           Int
-  produto       String    @db.VarChar(255)
-  icIv          IcIv      @map("ic_iv")
-  paiId         String?   @map("pai_id") @db.Uuid
-  pai           Meta?     @relation("MetaHierarquia", fields: [paiId], references: [id])
-  filhos        Meta[]    @relation("MetaHierarquia")
-  indicador     String    @db.VarChar(255)
-  responsavel   String    @db.VarChar(255)
-  unidade       String    @db.VarChar(50)
-  tipoMeta      TipoMeta  @map("tipo_meta")
-  metaAno       Decimal?  @map("meta_ano") @db.Decimal(15, 2)
+  id      String @id @default(uuid()) @db.Uuid
+  setorId String @map("setor_id") @db.Uuid
+  setor   Setor  @relation(fields: [setorId], references: [id])
+  ano     Int
 
-  valorJan      Decimal?  @map("valor_jan") @db.Decimal(15, 2)
-  valorFev      Decimal?  @map("valor_fev") @db.Decimal(15, 2)
-  valorMar      Decimal?  @map("valor_mar") @db.Decimal(15, 2)
-  valorAbr      Decimal?  @map("valor_abr") @db.Decimal(15, 2)
-  valorMai      Decimal?  @map("valor_mai") @db.Decimal(15, 2)
-  valorJun      Decimal?  @map("valor_jun") @db.Decimal(15, 2)
-  valorJul      Decimal?  @map("valor_jul") @db.Decimal(15, 2)
-  valorAgo      Decimal?  @map("valor_ago") @db.Decimal(15, 2)
-  valorSet      Decimal?  @map("valor_set") @db.Decimal(15, 2)
-  valorOut      Decimal?  @map("valor_out") @db.Decimal(15, 2)
-  valorNov      Decimal?  @map("valor_nov") @db.Decimal(15, 2)
-  valorDez      Decimal?  @map("valor_dez") @db.Decimal(15, 2)
+  // Ordem de exibição (preserva sequência do Excel)
+  ordem Int @default(0)
 
-  /// Coluna gerada pelo banco (GENERATED ALWAYS AS). Não gravar via Prisma Client.
-  acumulado     Decimal?    @map("acumulado") @db.Decimal(15, 2)
-  /// Coluna gerada pelo banco (GENERATED ALWAYS AS). Não gravar via Prisma Client.
-  status        StatusMeta? @map("status")
-  /// Coluna gerada pelo banco (GENERATED ALWAYS AS). Não gravar via Prisma Client.
-  editavel      Boolean?    @map("editavel")
+  // Agrupador visual — só preenchido no IC principal do grupo
+  produto String? @db.VarChar(255)
 
-  criadoEm      DateTime  @default(now()) @map("criado_em")
-  atualizadoEm  DateTime  @default(now()) @map("atualizado_em")
-  atualizadoPor String?   @map("atualizado_por") @db.Uuid
+  // Hierarquia
+  icIv  IcIv    @map("ic_iv")
+  paiId String? @map("pai_id") @db.Uuid
+  pai   Meta?   @relation("MetaHierarquia", fields: [paiId], references: [id])
+  filhos Meta[] @relation("MetaHierarquia")
+
+  // Dados do indicador
+  indicador   String   @db.VarChar(500)
+  responsavel String   @db.VarChar(255)
+  unidade     String   @db.VarChar(50)
+  tipoMeta    TipoMeta @map("tipo_meta")
+
+  // Comportamento do IC
+  // agrega_filhos: true = meta/real calculados da soma dos IVs filhos
+  agregaFilhos  Boolean @default(false) @map("agrega_filhos")
+  // tipo_acumulado: 'soma' | 'media' — define como calcular acum_meta e acum_real
+  tipoAcumulado String  @default("soma") @map("tipo_acumulado") @db.VarChar(10)
+
+  // Meta anual (definida pelo gerente)
+  metaAno Decimal? @map("meta_ano") @db.Decimal(15, 4)
+
+  // Meta por mês — definida pelo GERENTE (uma vez por ano)
+  metaJan Decimal? @map("meta_jan") @db.Decimal(15, 4)
+  metaFev Decimal? @map("meta_fev") @db.Decimal(15, 4)
+  metaMar Decimal? @map("meta_mar") @db.Decimal(15, 4)
+  metaAbr Decimal? @map("meta_abr") @db.Decimal(15, 4)
+  metaMai Decimal? @map("meta_mai") @db.Decimal(15, 4)
+  metaJun Decimal? @map("meta_jun") @db.Decimal(15, 4)
+  metaJul Decimal? @map("meta_jul") @db.Decimal(15, 4)
+  metaAgo Decimal? @map("meta_ago") @db.Decimal(15, 4)
+  metaSet Decimal? @map("meta_set") @db.Decimal(15, 4)
+  metaOut Decimal? @map("meta_out") @db.Decimal(15, 4)
+  metaNov Decimal? @map("meta_nov") @db.Decimal(15, 4)
+  metaDez Decimal? @map("meta_dez") @db.Decimal(15, 4)
+
+  // Real por mês — definido pelo RESPONSÁVEL mensalmente
+  realJan Decimal? @map("real_jan") @db.Decimal(15, 4)
+  realFev Decimal? @map("real_fev") @db.Decimal(15, 4)
+  realMar Decimal? @map("real_mar") @db.Decimal(15, 4)
+  realAbr Decimal? @map("real_abr") @db.Decimal(15, 4)
+  realMai Decimal? @map("real_mai") @db.Decimal(15, 4)
+  realJun Decimal? @map("real_jun") @db.Decimal(15, 4)
+  realJul Decimal? @map("real_jul") @db.Decimal(15, 4)
+  realAgo Decimal? @map("real_ago") @db.Decimal(15, 4)
+  realSet Decimal? @map("real_set") @db.Decimal(15, 4)
+  realOut Decimal? @map("real_out") @db.Decimal(15, 4)
+  realNov Decimal? @map("real_nov") @db.Decimal(15, 4)
+  realDez Decimal? @map("real_dez") @db.Decimal(15, 4)
+
+  // Status por mês — GENERATED ALWAYS AS no banco (calculado automaticamente)
+  /// Coluna gerada pelo banco. Não gravar via Prisma Client.
+  statusJan StatusMeta? @map("status_jan")
+  /// Coluna gerada pelo banco. Não gravar via Prisma Client.
+  statusFev StatusMeta? @map("status_fev")
+  /// Coluna gerada pelo banco. Não gravar via Prisma Client.
+  statusMar StatusMeta? @map("status_mar")
+  /// Coluna gerada pelo banco. Não gravar via Prisma Client.
+  statusAbr StatusMeta? @map("status_abr")
+  /// Coluna gerada pelo banco. Não gravar via Prisma Client.
+  statusMai StatusMeta? @map("status_mai")
+  /// Coluna gerada pelo banco. Não gravar via Prisma Client.
+  statusJun StatusMeta? @map("status_jun")
+  /// Coluna gerada pelo banco. Não gravar via Prisma Client.
+  statusJul StatusMeta? @map("status_jul")
+  /// Coluna gerada pelo banco. Não gravar via Prisma Client.
+  statusAgo StatusMeta? @map("status_ago")
+  /// Coluna gerada pelo banco. Não gravar via Prisma Client.
+  statusSet StatusMeta? @map("status_set")
+  /// Coluna gerada pelo banco. Não gravar via Prisma Client.
+  statusOut StatusMeta? @map("status_out")
+  /// Coluna gerada pelo banco. Não gravar via Prisma Client.
+  statusNov StatusMeta? @map("status_nov")
+  /// Coluna gerada pelo banco. Não gravar via Prisma Client.
+  statusDez StatusMeta? @map("status_dez")
+
+  // Acumulados — calculados pelo backend e armazenados
+  // (não podem ser GENERATED pois dependem de tipo_acumulado e de filhos)
+  acumMeta   Decimal?    @map("acum_meta") @db.Decimal(15, 4)
+  acumReal   Decimal?    @map("acum_real") @db.Decimal(15, 4)
+  /// Coluna gerada pelo banco. Não gravar via Prisma Client.
+  statusAcum StatusMeta? @map("status_acum")
+
+  // Controle
+  criadoEm            DateTime  @default(now()) @map("criado_em")
+  atualizadoEm        DateTime  @default(now()) @map("atualizado_em")
+  atualizadoPor       String?   @map("atualizado_por") @db.Uuid
   atualizadoPorUsuario Usuario? @relation("MetaAtualizadoPor", fields: [atualizadoPor], references: [id])
 
-  historicos    MetaHistorico[]
+  historicos MetaHistorico[]
 
   @@index([setorId])
   @@index([ano])
   @@index([icIv])
   @@index([paiId])
   @@index([setorId, ano])
+  @@index([setorId, ano, ordem])
   @@map("metas")
 }
 
@@ -154,17 +214,17 @@ model MetaHistorico {
 }
 
 model Auditoria {
-  id          String        @id @default(uuid()) @db.Uuid
-  setorId     String?       @map("setor_id") @db.Uuid
-  setor       Setor?        @relation(fields: [setorId], references: [id])
-  usuarioId   String?       @map("usuario_id") @db.Uuid
-  usuario     Usuario?      @relation(fields: [usuarioId], references: [id])
-  acao        AcaoAuditoria
-  tabela      String        @db.VarChar(50)
-  registroId  String?       @map("registro_id") @db.Uuid
-  ipAddress   String?       @map("ip_address") @db.VarChar(45)
-  timestamp   DateTime      @default(now())
-  detalhes    Json?
+  id         String        @id @default(uuid()) @db.Uuid
+  setorId    String?       @map("setor_id") @db.Uuid
+  setor      Setor?        @relation(fields: [setorId], references: [id])
+  usuarioId  String?       @map("usuario_id") @db.Uuid
+  usuario    Usuario?      @relation(fields: [usuarioId], references: [id])
+  acao       AcaoAuditoria
+  tabela     String        @db.VarChar(50)
+  registroId String?       @map("registro_id") @db.Uuid
+  ipAddress  String?       @map("ip_address") @db.VarChar(45)
+  timestamp  DateTime      @default(now())
+  detalhes   Json?
 
   @@index([setorId])
   @@index([usuarioId])

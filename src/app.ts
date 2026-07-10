@@ -6,6 +6,7 @@ import { authRouter } from "./routes/auth.routes";
 import { metasRouter } from "./routes/metas.routes";
 import { relatoriosRouter } from "./routes/relatorios.routes";
 import { auditoriaRouter } from "./routes/auditoria.routes";
+import { setoresRouter } from "./routes/setores.routes";
 import { errorHandler } from "./middleware/errorHandler";
 
 export const app = express();
@@ -41,5 +42,6 @@ app.use("/auth", authRouter);
 app.use("/metas", metasRouter);
 app.use("/relatorios", relatoriosRouter);
 app.use("/auditoria", auditoriaRouter);
+app.use("/setores", setoresRouter);
 
 app.use(errorHandler);

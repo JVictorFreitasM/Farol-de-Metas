@@ -1,40 +1,52 @@
-import { Meta, StatusMeta, TipoMeta } from "@prisma/client";
+import { Meta } from "@prisma/client";
 import { Decimal } from "@prisma/client/runtime/library";
 
-/**
- * ICs não preenchem valor_jan..dez diretamente, então sua coluna gerada
- * `acumulado` no banco é sempre 0. O valor real de um IC é a soma dos IVs
- * filhos, recalculada aqui em runtime (nunca persistida em `metas`).
- */
-export function calcularAgregadoIC(filhos: Meta[]): {
-  metaAno: Decimal | null;
-  acumulado: Decimal;
-  status: StatusMeta | null;
-} {
-  const metaAno = filhos.reduce<Decimal | null>((acc, f) => {
-    if (f.metaAno == null) return acc;
-    return (acc ?? new Decimal(0)).plus(f.metaAno);
-  }, null);
+export const MESES = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"] as const;
+export type MesKey = (typeof MESES)[number];
 
-  const acumulado = filhos.reduce(
-    (acc, f) => acc.plus(f.acumulado ?? new Decimal(0)),
-    new Decimal(0)
-  );
-
-  const tipoMeta: TipoMeta | undefined = filhos[0]?.tipoMeta;
-  const status = calcularStatus(tipoMeta, acumulado, metaAno);
-
-  return { metaAno, acumulado, status };
+export function campoMeta(mes: MesKey): keyof Meta {
+  return (`meta${mes}` as unknown) as keyof Meta;
+}
+export function campoReal(mes: MesKey): keyof Meta {
+  return (`real${mes}` as unknown) as keyof Meta;
 }
 
-export function calcularStatus(
-  tipoMeta: TipoMeta | undefined,
-  acumulado: Decimal,
-  metaAno: Decimal | null
-): StatusMeta | null {
-  if (!tipoMeta || metaAno == null) return null;
-  if (tipoMeta === "maior_melhor") {
-    return acumulado.gte(metaAno) ? "ok" : "nok";
+function valoresPreenchidos(meta: Meta, campo: (mes: MesKey) => keyof Meta): Decimal[] {
+  return MESES.map((mes) => meta[campo(mes)] as Decimal | null).filter((v): v is Decimal => v != null);
+}
+
+/** Recalcula acum_meta ou acum_real de uma linha a partir dos 12 meses, respeitando tipo_acumulado. */
+export function calcularAcumuladoLinha(meta: Meta, tipo: "meta" | "real"): Decimal | null {
+  const valores = valoresPreenchidos(meta, tipo === "meta" ? campoMeta : campoReal);
+  if (valores.length === 0) return null;
+
+  const soma = valores.reduce((acc, v) => acc.plus(v), new Decimal(0));
+  return meta.tipoAcumulado === "media" ? soma.div(valores.length) : soma;
+}
+
+/**
+ * Recalcula os campos agregados de um IC com agrega_filhos=true a partir dos IVs filhos:
+ * meta_jan..dez = soma dos respectivos meses dos filhos; acum_meta/acum_real = soma dos acum dos filhos.
+ */
+export function recalcularAgregadoIC(filhos: Meta[]): {
+  metaPorMes: Record<MesKey, Decimal | null>;
+  acumMeta: Decimal | null;
+  acumReal: Decimal | null;
+} {
+  const metaPorMes = {} as Record<MesKey, Decimal | null>;
+  for (const mes of MESES) {
+    const valores = filhos
+      .map((f) => f[campoMeta(mes)] as Decimal | null)
+      .filter((v): v is Decimal => v != null);
+    metaPorMes[mes] = valores.length ? valores.reduce((acc, v) => acc.plus(v), new Decimal(0)) : null;
   }
-  return acumulado.lte(metaAno) ? "ok" : "nok";
+
+  const acumMetaValores = filhos.map((f) => f.acumMeta).filter((v): v is Decimal => v != null);
+  const acumRealValores = filhos.map((f) => f.acumReal).filter((v): v is Decimal => v != null);
+
+  return {
+    metaPorMes,
+    acumMeta: acumMetaValores.length ? acumMetaValores.reduce((acc, v) => acc.plus(v), new Decimal(0)) : null,
+    acumReal: acumRealValores.length ? acumRealValores.reduce((acc, v) => acc.plus(v), new Decimal(0)) : null,
+  };
 }

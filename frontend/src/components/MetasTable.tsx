@@ -1,10 +1,11 @@
-import { useMemo, useState } from "react";
-import { AtualizarMetaBody } from "../services/metasService";
-import { Meta, MESES } from "../types";
+import { Fragment, useMemo, useState } from "react";
+import { MesesBody } from "../services/metasService";
+import { Meta, MESES, Mes, Role } from "../types";
 
 interface EditandoState {
   metaId: string;
-  campo: string;
+  tipo: "meta" | "real";
+  mes: Mes;
   valor: string;
 }
 
@@ -30,99 +31,196 @@ function formatNumber(valor: string | number | null): string {
   return Number.isFinite(n) ? n.toString() : "-";
 }
 
-export function MetasTable({ metas, onEditar }: { metas: Meta[]; onEditar: (id: string, body: AtualizarMetaBody) => Promise<void> }) {
+function statusIcone(status: string | null): string {
+  if (status === "ok") return "✓";
+  if (status === "nok") return "✗";
+  return "-";
+}
+
+const NUM_COLUNAS = 6 + MESES.length * 3 + 4;
+
+export function MetasTable({
+  metas,
+  usuarioRole,
+  usuarioSetorId,
+  onSalvarMeta,
+  onSalvarReal,
+  onDeletar,
+}: {
+  metas: Meta[];
+  usuarioRole: Role;
+  usuarioSetorId: string | null;
+  onSalvarMeta: (id: string, body: { meta?: MesesBody }) => Promise<void>;
+  onSalvarReal: (id: string, body: MesesBody) => Promise<void>;
+  onDeletar: (id: string) => Promise<void>;
+}) {
   const [editando, setEditando] = useState<EditandoState | null>(null);
+  const [confirmandoExclusao, setConfirmandoExclusao] = useState<string | null>(null);
   const { raiz, filhosPorPai } = useMemo(() => buildTree(metas), [metas]);
 
-  const iniciarEdicao = (meta: Meta, campo: string) => {
-    if (meta.ic_iv === "IC") return;
-    const valorAtual = (meta as unknown as Record<string, unknown>)[`valor_${campo}`];
-    setEditando({ metaId: meta.id, campo, valor: valorAtual != null ? String(valorAtual) : "" });
+  const isGerente = usuarioRole === "gerente" || usuarioRole === "admin";
+  const podeEditarMeta = (meta: Meta) => isGerente && !meta.agrega_filhos;
+  const podeEditarReal = (meta: Meta) => usuarioRole === "responsavel" && usuarioSetorId === meta.setor_id && !meta.agrega_filhos;
+
+  const iniciarEdicao = (meta: Meta, tipo: "meta" | "real", mes: Mes) => {
+    if (tipo === "meta" && !podeEditarMeta(meta)) return;
+    if (tipo === "real" && !podeEditarReal(meta)) return;
+    const valorAtual = meta.meses[mes][tipo];
+    setEditando({ metaId: meta.id, tipo, mes, valor: valorAtual != null ? String(valorAtual) : "" });
   };
 
   const salvar = async (meta: Meta) => {
     if (!editando) return;
     const numero = parseFloat(editando.valor);
-    if (Number.isNaN(numero)) {
-      setEditando(null);
-      return;
-    }
-    if (meta.tipo_meta === "maior_melhor" && numero < 0) {
+    if (Number.isNaN(numero) || (meta.tipo_meta === "maior_melhor" && numero < 0)) {
       setEditando(null);
       return;
     }
     try {
-      await onEditar(meta.id, { [`valor_${editando.campo}`]: numero });
+      if (editando.tipo === "meta") {
+        await onSalvarMeta(meta.id, { meta: { [editando.mes]: numero } });
+      } else {
+        await onSalvarReal(meta.id, { [editando.mes]: numero });
+      }
     } finally {
       setEditando(null);
     }
   };
 
-  const renderLinha = (meta: Meta, nivel: number): JSX.Element => {
+  const renderCelula = (meta: Meta, tipo: "meta" | "real", mes: Mes): JSX.Element => {
+    const isEditing = editando?.metaId === meta.id && editando?.tipo === tipo && editando?.mes === mes;
+    const editavel = tipo === "meta" ? podeEditarMeta(meta) : podeEditarReal(meta);
+    const isAgregado = tipo === "meta" && meta.ic_iv === "IC" && meta.agrega_filhos;
+
+    if (isEditing) {
+      return (
+        <td className="editing">
+          <input
+            type="number"
+            autoFocus
+            value={editando.valor}
+            min={meta.tipo_meta === "maior_melhor" ? 0 : undefined}
+            onChange={(e) => setEditando({ ...editando, valor: e.target.value })}
+            onBlur={() => salvar(meta)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+              if (e.key === "Escape") setEditando(null);
+            }}
+          />
+        </td>
+      );
+    }
+
+    return (
+      <td
+        className={isAgregado ? "agregado" : editavel ? "editable" : "locked"}
+        title={isAgregado ? "Calculado automaticamente a partir dos IVs filhos" : undefined}
+        onClick={() => iniciarEdicao(meta, tipo, mes)}
+      >
+        {formatNumber(meta.meses[mes][tipo])}
+      </td>
+    );
+  };
+
+  const renderLinha = (meta: Meta, nivel: number, produtoVisivel: boolean): JSX.Element => {
     const filhos = filhosPorPai.get(meta.id) ?? [];
     const isIC = meta.ic_iv === "IC";
 
     return (
-      <>
-        <tr key={meta.id} className={isIC ? "ic-row" : "iv-row"}>
+      <Fragment key={meta.id}>
+        <tr className={isIC ? "ic-row" : "iv-row"}>
+          <td>{produtoVisivel ? meta.produto : ""}</td>
+          <td>
+            <span className={`badge-ic-iv ${isIC ? "badge-ic" : "badge-iv"}`}>{meta.ic_iv}</span>
+          </td>
           <td style={{ paddingLeft: `${nivel * 20}px` }}>
             {nivel > 0 ? "└ " : ""}
             {meta.indicador}
           </td>
+          <td>{meta.responsavel}</td>
           <td>{meta.unidade}</td>
           <td>{formatNumber(meta.meta_ano)}</td>
-          {MESES.map((mes) => {
-            const isEditing = editando?.metaId === meta.id && editando?.campo === mes;
-            return (
-              <td
-                key={mes}
-                className={isEditing ? "editing" : isIC ? "locked" : "editable"}
-                title={isIC ? "ICs são calculados automaticamente" : undefined}
-                onClick={() => iniciarEdicao(meta, mes)}
-              >
-                {isEditing ? (
-                  <input
-                    type="number"
-                    autoFocus
-                    value={editando.valor}
-                    min={meta.tipo_meta === "maior_melhor" ? 0 : undefined}
-                    onChange={(e) => setEditando({ ...editando, valor: e.target.value })}
-                    onBlur={() => salvar(meta)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-                      if (e.key === "Escape") setEditando(null);
+          {MESES.map((mes) => (
+            <Fragment key={mes}>
+              {renderCelula(meta, "meta", mes)}
+              {renderCelula(meta, "real", mes)}
+              <td className={`status-${meta.meses[mes].status ?? "vazio"}`}>{statusIcone(meta.meses[mes].status)}</td>
+            </Fragment>
+          ))}
+          <td>{formatNumber(meta.acum_meta)}</td>
+          <td>{formatNumber(meta.acum_real)}</td>
+          <td className={`status-${meta.status_acum ?? "vazio"}`}>{statusIcone(meta.status_acum)}</td>
+          <td>
+            {isGerente &&
+              (confirmandoExclusao === meta.id ? (
+                <span className="acoes-confirmar">
+                  <button
+                    className="btn-link btn-link-danger"
+                    onClick={async () => {
+                      await onDeletar(meta.id);
+                      setConfirmandoExclusao(null);
                     }}
-                  />
-                ) : (
-                  formatNumber((meta as unknown as Record<string, unknown>)[`valor_${mes}`] as string | number | null)
-                )}
-              </td>
-            );
-          })}
-          <td className={`status-${meta.status ?? "vazio"}`} title={meta.atualizado_por_usuario ? `Alterado por ${meta.atualizado_por_usuario} em ${new Date(meta.atualizado_em).toLocaleString("pt-BR")}` : undefined}>
-            {meta.status === "ok" ? "✓" : meta.status === "nok" ? "✗" : "-"}
+                  >
+                    Confirmar
+                  </button>
+                  <button className="btn-link" onClick={() => setConfirmandoExclusao(null)}>
+                    Cancelar
+                  </button>
+                </span>
+              ) : (
+                <button className="btn-link btn-link-danger" title="Remover indicador" onClick={() => setConfirmandoExclusao(meta.id)}>
+                  Remover
+                </button>
+              ))}
           </td>
         </tr>
-        {filhos.map((filho) => renderLinha(filho, nivel + 1))}
-      </>
+        {filhos.map((filho) => renderLinha(filho, nivel + 1, false))}
+      </Fragment>
     );
   };
 
+  let ultimoProduto: string | null = null;
+
   return (
     <div className="metas-table-wrapper">
-      <table className="metas-table">
+      <table className="metas-table metas-table-excel">
         <thead>
           <tr>
+            <th>Produto</th>
+            <th>IC/IV</th>
             <th>Indicador</th>
-            <th>Unid.</th>
-            <th>Meta</th>
+            <th>Responsável</th>
+            <th>Unidade</th>
+            <th>Meta Ano</th>
             {MESES.map((mes) => (
-              <th key={mes}>{mes.toUpperCase()}</th>
+              <Fragment key={mes}>
+                <th>{mes.toUpperCase()} Meta</th>
+                <th>{mes.toUpperCase()} Real</th>
+                <th>{mes.toUpperCase()} St.</th>
+              </Fragment>
             ))}
-            <th>Status</th>
+            <th>Acum Meta</th>
+            <th>Acum Real</th>
+            <th>Status Acum</th>
+            <th>Ações</th>
           </tr>
         </thead>
-        <tbody>{raiz.map((meta) => renderLinha(meta, 0))}</tbody>
+        <tbody>
+          {raiz.map((meta) => {
+            const mostrarSeparador = !!meta.produto && meta.produto !== ultimoProduto;
+            if (meta.produto) ultimoProduto = meta.produto;
+            return (
+              <Fragment key={`grupo-${meta.id}`}>
+                {mostrarSeparador && (
+                  <tr className="produto-separador">
+                    <td colSpan={NUM_COLUNAS}>{meta.produto}</td>
+                  </tr>
+                )}
+                {renderLinha(meta, 0, false)}
+              </Fragment>
+            );
+          })}
+        </tbody>
       </table>
     </div>
   );
