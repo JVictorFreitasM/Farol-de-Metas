@@ -1,5 +1,5 @@
 import { apiFetch } from "./api";
-import { IcIv, Meta, Mes, Setor, StatusMeta, TipoMeta } from "../types";
+import { IcIv, Meta, Mes, Setor, StatusMeta, TipoAgregacaoMeta, TipoAgregacaoReal, TipoMeta } from "../types";
 
 export interface ListarMetasParams {
   setor_id?: string;
@@ -47,6 +47,9 @@ export interface CriarMetaBody {
   tipo_meta: TipoMeta;
   agrega_filhos?: boolean;
   tipo_acumulado?: "soma" | "media";
+  tipo_agregacao_meta?: TipoAgregacaoMeta;
+  tipo_agregacao_real?: TipoAgregacaoReal;
+  meta_manual_acum?: number;
   meta_ano?: number;
   meta?: MesesBody;
 }
@@ -57,6 +60,10 @@ export function criarMeta(body: CriarMetaBody) {
 
 export function editarMeta(id: string, body: { meta_ano?: number; meta?: MesesBody; produto_id?: string | null }) {
   return apiFetch(`/metas/${id}/meta`, { method: "PUT", body: JSON.stringify(body) });
+}
+
+export function editarMetaManual(id: string, metaManualAcum: number) {
+  return apiFetch(`/metas/${id}/meta-manual`, { method: "PUT", body: JSON.stringify({ meta_manual_acum: metaManualAcum }) });
 }
 
 export function editarReal(id: string, body: { real: MesesBody }) {

@@ -6,6 +6,7 @@ import {
   CriarMetaBody,
   deletarMeta,
   editarMeta,
+  editarMetaManual,
   editarReal,
   inativarMeta,
   listarMetas,
@@ -52,6 +53,17 @@ export function useMetas(params: ListarMetasParams) {
       await carregar();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Erro ao salvar meta");
+      throw err;
+    }
+  };
+
+  const salvarMetaManual = async (id: string, valor: number) => {
+    try {
+      await editarMetaManual(id, valor);
+      toast.success("Meta manual atualizada!");
+      await carregar();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro ao salvar meta manual");
       throw err;
     }
   };
@@ -111,5 +123,5 @@ export function useMetas(params: ListarMetasParams) {
     }
   };
 
-  return { metas, setores, loading, recarregar: carregar, salvarMeta, salvarReal, criar, deletar, inativar, ativar };
+  return { metas, setores, loading, recarregar: carregar, salvarMeta, salvarMetaManual, salvarReal, criar, deletar, inativar, ativar };
 }

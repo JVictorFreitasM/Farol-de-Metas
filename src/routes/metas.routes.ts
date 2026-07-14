@@ -39,7 +39,11 @@ async function recalcularLinhaEPai(metaId: string, usuarioId: string) {
   if (!pai || !pai.agregaFilhos) return null;
 
   const filhos = await prisma.meta.findMany({ where: { paiId: pai.id, ativo: true } });
-  const agregado = recalcularAgregadoIC(filhos);
+  const agregado = recalcularAgregadoIC(filhos, {
+    tipoAgregacaoMeta: pai.tipoAgregacaoMeta,
+    tipoAgregacaoReal: pai.tipoAgregacaoReal,
+    metaManualAcum: pai.metaManualAcum,
+  });
 
   const dataMeses = Object.fromEntries([
     ...MESES.map((mes) => [`meta${mes}`, agregado.metaPorMes[mes]]),
@@ -224,6 +228,10 @@ const criarMetaSchema = z.object({
   tipo_meta: z.enum(["maior_melhor", "menor_melhor"]),
   agrega_filhos: z.boolean().default(false),
   tipo_acumulado: z.enum(["soma", "media"]).default("soma"),
+  // OS-009: regras de agregação do IC a partir dos filhos (só relevante quando agrega_filhos=true)
+  tipo_agregacao_meta: z.enum(["soma", "media", "meta_manual"]).default("soma"),
+  tipo_agregacao_real: z.enum(["soma", "media", "proporcao_agregada"]).default("soma"),
+  meta_manual_acum: z.number().optional(),
   meta_ano: z.number().optional(),
   meta: mesesSchema.optional(),
 });
@@ -238,6 +246,9 @@ metasRouter.post("/", authorize("gerente"), async (req, res, next) => {
     }
     if (body.ic_iv === "IC" && body.pai_id) {
       throw badRequest("ICs não podem ter pai_id");
+    }
+    if (body.agrega_filhos && body.tipo_agregacao_meta === "meta_manual" && body.meta_manual_acum == null) {
+      throw badRequest("tipo_agregacao_meta 'meta_manual' requer o campo meta_manual_acum");
     }
 
     const meta = await prisma.meta.create({
@@ -254,6 +265,9 @@ metasRouter.post("/", authorize("gerente"), async (req, res, next) => {
         tipoMeta: body.tipo_meta,
         agregaFilhos: body.agrega_filhos,
         tipoAcumulado: body.tipo_acumulado,
+        tipoAgregacaoMeta: body.tipo_agregacao_meta,
+        tipoAgregacaoReal: body.tipo_agregacao_real,
+        metaManualAcum: body.meta_manual_acum,
         metaAno: body.meta_ano,
         metaJan: body.meta?.jan,
         metaFev: body.meta?.fev,
@@ -372,6 +386,70 @@ metasRouter.put("/:id/meta", authorize("gerente", "admin"), async (req, res, nex
   }
 });
 
+const editarMetaManualSchema = z.object({
+  meta_manual_acum: z.number(),
+});
+
+metasRouter.put("/:id/meta-manual", authorize("gerente", "admin"), async (req, res, next) => {
+  try {
+    const body = editarMetaManualSchema.parse(req.body);
+    const usuario = req.usuario!;
+
+    const meta = await prisma.meta.findUnique({ where: { id: req.params.id } });
+    if (!meta) throw notFound("Meta não encontrada");
+    if (!meta.agregaFilhos || meta.tipoAgregacaoMeta !== "meta_manual") {
+      throw conflict("Este indicador não usa meta manual (tipo_agregacao_meta = meta_manual).");
+    }
+
+    const valoresAntes = { ...meta };
+
+    await prisma.meta.update({
+      where: { id: meta.id },
+      data: { metaManualAcum: body.meta_manual_acum, atualizadoPor: usuario.id },
+    });
+
+    const filhos = await prisma.meta.findMany({ where: { paiId: meta.id, ativo: true } });
+    const agregado = recalcularAgregadoIC(filhos, {
+      tipoAgregacaoMeta: meta.tipoAgregacaoMeta,
+      tipoAgregacaoReal: meta.tipoAgregacaoReal,
+      metaManualAcum: new Prisma.Decimal(body.meta_manual_acum),
+    });
+
+    const dataMeses = Object.fromEntries([
+      ...MESES.map((mes) => [`meta${mes}`, agregado.metaPorMes[mes]]),
+      ...MESES.map((mes) => [`real${mes}`, agregado.realPorMes[mes]]),
+    ]);
+
+    const metaAtualizada = await prisma.meta.update({
+      where: { id: meta.id },
+      data: { ...dataMeses, acumMeta: agregado.acumMeta, acumReal: agregado.acumReal },
+      include: includeRelacoes,
+    });
+
+    await prisma.metaHistorico.create({
+      data: {
+        metasId: meta.id,
+        versao: (await prisma.metaHistorico.count({ where: { metasId: meta.id } })) + 1,
+        valoresAntes: JSON.parse(JSON.stringify(valoresAntes)),
+        valoresDepois: JSON.parse(JSON.stringify(metaAtualizada)),
+        alteradoPor: usuario.id,
+      },
+    });
+
+    await registrarAuditoria(req, {
+      acao: "UPDATE",
+      tabela: "metas",
+      registroId: meta.id,
+      setorId: meta.setorId,
+      detalhes: { campos_alterados: body },
+    });
+
+    res.json(serializeMeta(metaAtualizada));
+  } catch (err) {
+    next(err);
+  }
+});
+
 const editarRealSchema = z.object({
   real: mesesSchema,
 });
@@ -481,7 +559,11 @@ metasRouter.delete("/:id", authorize("gerente", "admin"), async (req, res, next)
       const pai = await prisma.meta.findUnique({ where: { id: meta.paiId } });
       if (pai?.agregaFilhos) {
         const filhos = await prisma.meta.findMany({ where: { paiId: pai.id, ativo: true } });
-        const agregado = recalcularAgregadoIC(filhos);
+        const agregado = recalcularAgregadoIC(filhos, {
+          tipoAgregacaoMeta: pai.tipoAgregacaoMeta,
+          tipoAgregacaoReal: pai.tipoAgregacaoReal,
+          metaManualAcum: pai.metaManualAcum,
+        });
         const dataMeses = Object.fromEntries([
           ...MESES.map((mes) => [`meta${mes}`, agregado.metaPorMes[mes]]),
           ...MESES.map((mes) => [`real${mes}`, agregado.realPorMes[mes]]),

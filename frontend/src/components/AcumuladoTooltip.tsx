@@ -19,7 +19,28 @@ function calcularPercentual(meta: Meta): string {
 const FECHAR_DELAY_MS = 200;
 const MARGEM = 8;
 
-export function AcumuladoTooltip({ meta, children }: { meta: Meta; children: ReactNode }) {
+const LABEL_AGREGACAO_META: Record<Meta["tipo_agregacao_meta"], string> = {
+  soma: "Soma dos filhos",
+  media: "Média dos filhos",
+  meta_manual: "Manual",
+};
+const LABEL_AGREGACAO_REAL: Record<Meta["tipo_agregacao_real"], string> = {
+  soma: "Soma dos filhos",
+  media: "Média dos filhos",
+  proporcao_agregada: "Proporção agregada",
+};
+
+export function AcumuladoTooltip({
+  meta,
+  children,
+  podeEditarMetaManual,
+  onSalvarMetaManual,
+}: {
+  meta: Meta;
+  children: ReactNode;
+  podeEditarMetaManual?: boolean;
+  onSalvarMetaManual?: (id: string, valor: number) => Promise<void>;
+}) {
   const [visivel, setVisivel] = useState(false);
   const [posicao, setPosicao] = useState({ top: 0, left: 0, direcao: "cima" as "cima" | "baixo" });
   const [periodoAberto, setPeriodoAberto] = useState(false);
@@ -27,6 +48,23 @@ export function AcumuladoTooltip({ meta, children }: { meta: Meta; children: Rea
   const [mesFim, setMesFim] = useState<Mes>("dez");
   const [resultado, setResultado] = useState<Awaited<ReturnType<typeof obterAcumuladoPeriodo>> | null>(null);
   const [carregando, setCarregando] = useState(false);
+  const [editandoMetaManual, setEditandoMetaManual] = useState(false);
+  const [valorMetaManual, setValorMetaManual] = useState("");
+
+  const ehMetaManual = meta.agrega_filhos && meta.tipo_agregacao_meta === "meta_manual";
+
+  const iniciarEdicaoMetaManual = () => {
+    if (!podeEditarMetaManual || !ehMetaManual) return;
+    setValorMetaManual(meta.meta_manual_acum != null ? String(meta.meta_manual_acum) : "");
+    setEditandoMetaManual(true);
+  };
+
+  const salvarMetaManual = async () => {
+    const numero = parseFloat(valorMetaManual);
+    setEditandoMetaManual(false);
+    if (Number.isNaN(numero) || !onSalvarMetaManual) return;
+    await onSalvarMetaManual(meta.id, numero);
+  };
   const containerRef = useRef<HTMLSpanElement>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
   const fecharTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -126,7 +164,28 @@ export function AcumuladoTooltip({ meta, children }: { meta: Meta; children: Rea
             </div>
             <div className="acumulado-tooltip-row">
               <span>Acum. Meta</span>
-              <span>{formatNumero(meta.acum_meta)}</span>
+              {editandoMetaManual ? (
+                <input
+                  type="number"
+                  autoFocus
+                  className="acumulado-tooltip-input"
+                  value={valorMetaManual}
+                  onChange={(e) => setValorMetaManual(e.target.value)}
+                  onBlur={salvarMetaManual}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                    if (e.key === "Escape") setEditandoMetaManual(false);
+                  }}
+                />
+              ) : (
+                <span
+                  className={podeEditarMetaManual && ehMetaManual ? "acumulado-tooltip-editavel" : undefined}
+                  title={podeEditarMetaManual && ehMetaManual ? "Clique para editar a meta manual" : undefined}
+                  onClick={iniciarEdicaoMetaManual}
+                >
+                  {formatNumero(meta.acum_meta)}
+                </span>
+              )}
             </div>
             <div className="acumulado-tooltip-row">
               <span>Acum. Real</span>
@@ -136,6 +195,14 @@ export function AcumuladoTooltip({ meta, children }: { meta: Meta; children: Rea
               <span>Tipo Acum.</span>
               <span>{meta.tipo_acumulado === "media" ? "Média" : "Soma"}</span>
             </div>
+            {meta.agrega_filhos && (
+              <div className="acumulado-tooltip-row">
+                <span>Agregação</span>
+                <span>
+                  {LABEL_AGREGACAO_META[meta.tipo_agregacao_meta]} / {LABEL_AGREGACAO_REAL[meta.tipo_agregacao_real]}
+                </span>
+              </div>
+            )}
             <div className="acumulado-tooltip-divider" />
             <div className="acumulado-tooltip-row">
               <span>Atingimento</span>

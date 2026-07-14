@@ -33,12 +33,12 @@ export function ProdutosModal({
         <div className="card-title">{produto ? "Editar produto" : "Novo produto"}</div>
 
         <div className="modal-form">
-          <label className="form-group">
+          <label className="form-group form-group-full">
             Nome
             <input className="form-input" value={nome} onChange={(e) => setNome(e.target.value)} />
           </label>
 
-          <label className="form-group">
+          <label className="form-group form-group-full">
             Descrição
             <textarea
               className="form-input"
@@ -48,7 +48,7 @@ export function ProdutosModal({
             />
           </label>
 
-          <label className="form-group">
+          <label className="form-group form-group-full">
             Status
             <select className="form-input" value={status} onChange={(e) => setStatus(e.target.value as StatusProduto)}>
               <option value="ativo">Ativo</option>

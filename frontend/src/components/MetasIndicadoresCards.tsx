@@ -69,6 +69,7 @@ export function MetasIndicadoresCards({
   usuarioRole,
   usuarioSetorId,
   onSalvarReal,
+  onSalvarMetaManual,
   onDeletar,
   onInativar,
   onAtivar,
@@ -78,6 +79,7 @@ export function MetasIndicadoresCards({
   usuarioRole: Role;
   usuarioSetorId: string | null;
   onSalvarReal: (id: string, body: MesesBody) => Promise<void>;
+  onSalvarMetaManual: (id: string, valor: number) => Promise<void>;
   onDeletar: (id: string) => Promise<void>;
   onInativar: (id: string, motivo?: string) => Promise<void>;
   onAtivar: (id: string) => Promise<void>;
@@ -167,7 +169,9 @@ export function MetasIndicadoresCards({
 
         <div className="indicador-row-nome">
           <div className="indicador-row-nome-texto">
-            <AcumuladoTooltip meta={meta}>{meta.indicador}</AcumuladoTooltip>
+            <AcumuladoTooltip meta={meta} podeEditarMetaManual={isGerente} onSalvarMetaManual={onSalvarMetaManual}>
+              {meta.indicador}
+            </AcumuladoTooltip>
             {opcoes?.contador !== undefined && opcoes.contador > 0 && (
               <span className="indicador-row-contador"> ({opcoes.contador} IV{opcoes.contador > 1 ? "s" : ""})</span>
             )}

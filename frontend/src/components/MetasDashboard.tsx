@@ -63,7 +63,7 @@ export function MetasDashboard({ metas, ano }: { metas: Meta[]; ano: number }) {
     tooltip: { trigger: "axis", axisPointer: { type: "shadow" } },
     legend: { top: 0 },
     grid: { left: "18%", right: "5%", top: 40, bottom: 20 },
-    xAxis: { type: "value" },
+    xAxis: { type: "value", minInterval: 1 },
     yAxis: { type: "category", data: setoresLabels },
     series: [
       { name: "OK", type: "bar", stack: "total", itemStyle: { color: COR_OK, borderRadius: [0, 4, 4, 0] }, data: dadosOk },

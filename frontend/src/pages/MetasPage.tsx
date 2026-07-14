@@ -26,7 +26,7 @@ export function MetasPage() {
   const [mesEscolhidoManualmente, setMesEscolhidoManualmente] = useState(false);
   const [mostrarInativos, setMostrarInativos] = useState(false);
 
-  const { metas, setores, loading, recarregar, salvarReal, criar, deletar, inativar, ativar } = useMetas({
+  const { metas, setores, loading, recarregar, salvarReal, salvarMetaManual, criar, deletar, inativar, ativar } = useMetas({
     ano,
     setor_id: setorId,
     incluir_inativos: mostrarInativos,
@@ -113,6 +113,7 @@ export function MetasPage() {
             usuarioRole={usuario.role}
             usuarioSetorId={usuario.setor_id}
             onSalvarReal={salvarReal}
+            onSalvarMetaManual={salvarMetaManual}
             onDeletar={deletar}
             onInativar={inativar}
             onAtivar={ativar}

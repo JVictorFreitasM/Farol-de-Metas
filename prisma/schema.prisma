@@ -52,6 +52,26 @@ enum StatusProduto {
   @@map("status_produto_type")
 }
 
+// OS-009: regras de agregação de um IC (agrega_filhos=true) a partir dos IVs filhos.
+// Meta e Real têm enums separados porque cada lado só aceita um subconjunto de regras:
+// meta_manual só faz sentido para a Meta (valor fixo digitado), proporcao_agregada só para o Real
+// (razão soma dos reais / soma das metas dos filhos).
+enum TipoAgregacaoMeta {
+  soma
+  media
+  meta_manual
+
+  @@map("tipo_agregacao_meta_type")
+}
+
+enum TipoAgregacaoReal {
+  soma
+  media
+  proporcao_agregada
+
+  @@map("tipo_agregacao_real_type")
+}
+
 model Setor {
   id           String   @id @default(uuid()) @db.Uuid
   nome         String   @unique @db.VarChar(255)
@@ -147,8 +167,14 @@ model Meta {
   // Comportamento do IC
   // agrega_filhos: true = meta/real calculados da soma dos IVs filhos
   agregaFilhos  Boolean @default(false) @map("agrega_filhos")
-  // tipo_acumulado: 'soma' | 'media' — define como calcular acum_meta e acum_real
+  // tipo_acumulado: 'soma' | 'media' — acumula os 12 meses da PRÓPRIA linha (não usado quando agrega_filhos=true)
   tipoAcumulado String  @default("soma") @map("tipo_acumulado") @db.VarChar(10)
+
+  // OS-009: regras de agregação a partir dos filhos — só relevantes quando agrega_filhos=true
+  tipoAgregacaoMeta TipoAgregacaoMeta @default(soma) @map("tipo_agregacao_meta")
+  tipoAgregacaoReal TipoAgregacaoReal @default(soma) @map("tipo_agregacao_real")
+  // Valor fixo de meta acumulada, usado quando tipo_agregacao_meta = meta_manual
+  metaManualAcum    Decimal?          @map("meta_manual_acum") @db.Decimal(15, 4)
 
   // Meta anual (definida pelo gerente)
   metaAno Decimal? @map("meta_ano") @db.Decimal(15, 4)

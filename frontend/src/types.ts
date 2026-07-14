@@ -2,6 +2,8 @@ export type Role = "responsavel" | "gerente" | "admin";
 export type IcIv = "IC" | "IV";
 export type TipoMeta = "maior_melhor" | "menor_melhor";
 export type StatusMeta = "ok" | "nok";
+export type TipoAgregacaoMeta = "soma" | "media" | "meta_manual";
+export type TipoAgregacaoReal = "soma" | "media" | "proporcao_agregada";
 export type AcaoAuditoria = "CREATE" | "READ" | "UPDATE" | "DELETE";
 
 export interface Usuario {
@@ -83,6 +85,9 @@ export interface Meta {
   tipo_meta: TipoMeta;
   agrega_filhos: boolean;
   tipo_acumulado: "soma" | "media";
+  tipo_agregacao_meta: TipoAgregacaoMeta;
+  tipo_agregacao_real: TipoAgregacaoReal;
+  meta_manual_acum: string | number | null;
   meta_ano: string | number | null;
   meses: MesesMeta;
   acum_meta: string | number | null;
