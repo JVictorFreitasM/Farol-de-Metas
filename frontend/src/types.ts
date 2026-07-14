@@ -18,6 +18,31 @@ export interface Setor {
   email: string | null;
 }
 
+export type StatusProduto = "ativo" | "inativo";
+
+export interface Produto {
+  id: string;
+  nome: string;
+  descricao: string | null;
+  setor_id: string;
+  status: StatusProduto;
+  criado_por: string;
+  criado_em: string;
+  atualizado_em: string;
+  atualizado_por: string | null;
+  _count?: { metas: number };
+}
+
+export interface ProdutoComMetas extends Produto {
+  metas?: {
+    id: string;
+    indicador: string;
+    tipoMeta: TipoMeta;
+    metaAno: string | number | null;
+    statusAcum: StatusMeta | null;
+  }[];
+}
+
 export const MESES = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"] as const;
 export type Mes = (typeof MESES)[number];
 export const MESES_LABEL: Record<Mes, string> = {
@@ -49,6 +74,7 @@ export interface Meta {
   pai_id: string | null;
   ano: number;
   ordem: number;
+  produto_id: string | null;
   produto: string | null;
   ic_iv: IcIv;
   indicador: string;
@@ -64,6 +90,9 @@ export interface Meta {
   status_acum: StatusMeta | null;
   atualizado_por_usuario: string | null;
   atualizado_em: string;
+  ativo: boolean;
+  inativado_em: string | null;
+  inativado_por_usuario: string | null;
   filhos?: MetaFilho[];
 }
 
@@ -93,6 +122,13 @@ export interface DashboardResumo {
     meta_ano: string | number | null;
     percentual: string | number | null;
     filhos_nok: string[];
+  }[];
+  metas_incompletas: {
+    id: string;
+    indicador: string;
+    responsavel: string;
+    meses_faltando: string[];
+    quantidade_faltando: number;
   }[];
 }
 

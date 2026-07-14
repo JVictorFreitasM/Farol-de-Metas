@@ -7,6 +7,7 @@ import { metasRouter } from "./routes/metas.routes";
 import { relatoriosRouter } from "./routes/relatorios.routes";
 import { auditoriaRouter } from "./routes/auditoria.routes";
 import { setoresRouter } from "./routes/setores.routes";
+import { produtosRouter } from "./routes/produtos.routes";
 import { errorHandler } from "./middleware/errorHandler";
 
 export const app = express();
@@ -43,5 +44,6 @@ app.use("/metas", metasRouter);
 app.use("/relatorios", relatoriosRouter);
 app.use("/auditoria", auditoriaRouter);
 app.use("/setores", setoresRouter);
+app.use("/produtos", produtosRouter);
 
 app.use(errorHandler);

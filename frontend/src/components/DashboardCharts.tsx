@@ -1,9 +1,9 @@
 import {
+  Bar,
+  BarChart,
   CartesianGrid,
   Cell,
   Legend,
-  Line,
-  LineChart,
   Pie,
   PieChart,
   ResponsiveContainer,
@@ -18,15 +18,16 @@ const COLORS = { ok: "#10b981", nok: "#ef4444" };
 export function TendenciaMensalChart({ evolucao }: { evolucao: DashboardResumo["evolucao_mensal"] }) {
   return (
     <ResponsiveContainer width="100%" height={280}>
-      <LineChart data={evolucao}>
+      <BarChart data={evolucao}>
         <CartesianGrid strokeDasharray="3 3" />
         <XAxis dataKey="mes" />
-        <YAxis />
+        <YAxis allowDecimals={false} />
         <Tooltip />
         <Legend />
-        <Line type="monotone" dataKey="status_ok" name="OK" stroke={COLORS.ok} />
-        <Line type="monotone" dataKey="status_nok" name="NOK" stroke={COLORS.nok} />
-      </LineChart>
+        {/* Sem stackId: colunas lado-a-lado (grouped), não empilhadas */}
+        <Bar dataKey="status_ok" name="OK" fill={COLORS.ok} radius={[4, 4, 0, 0]} />
+        <Bar dataKey="status_nok" name="NOK" fill={COLORS.nok} radius={[4, 4, 0, 0]} />
+      </BarChart>
     </ResponsiveContainer>
   );
 }

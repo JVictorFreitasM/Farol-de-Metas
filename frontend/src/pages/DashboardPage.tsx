@@ -3,6 +3,7 @@ import { toast } from "react-toastify";
 import { AppLayout } from "../components/AppLayout";
 import { DashboardCards } from "../components/DashboardCards";
 import { StatusRoscaChart, TendenciaMensalChart } from "../components/DashboardCharts";
+import { MetasNaoPreenchidas } from "../components/MetasNaoPreenchidas";
 import { useAuth } from "../hooks/useAuth";
 import { gerarOpcoesAno, useAnoSelecionado } from "../hooks/useAnoSelecionado";
 import { comparativaSetores, dashboardSetor } from "../services/relatoriosService";
@@ -106,9 +107,11 @@ export function DashboardPage() {
         <>
           <DashboardCards dados={dados} />
 
+          <MetasNaoPreenchidas metas={dados.metas_incompletas} />
+
           <div className="charts-row">
             <div className="card">
-              <div className="card-title">Tendência Mensal</div>
+              <div className="card-title">Evolução Mensal (OK x NOK)</div>
               <TendenciaMensalChart evolucao={dados.evolucao_mensal} />
             </div>
             <div className="card">

@@ -1,10 +1,12 @@
-import { Meta, Setor, Usuario } from "@prisma/client";
+import { Meta, Produto, Setor, Usuario } from "@prisma/client";
 import { MESES } from "./metasCalc";
 
 type MetaComRelacoes = Meta & {
   setor?: Setor;
   atualizadoPorUsuario?: Usuario | null;
+  inativadoPorUsuario?: Usuario | null;
   filhos?: Meta[];
+  produto?: Produto | null;
 };
 
 export function serializeMeta(meta: MetaComRelacoes) {
@@ -25,7 +27,8 @@ export function serializeMeta(meta: MetaComRelacoes) {
     pai_id: meta.paiId,
     ano: meta.ano,
     ordem: meta.ordem,
-    produto: meta.produto,
+    produto_id: meta.produtoId,
+    produto: meta.produto?.nome ?? null,
     ic_iv: meta.icIv,
     indicador: meta.indicador,
     responsavel: meta.responsavel,
@@ -40,6 +43,9 @@ export function serializeMeta(meta: MetaComRelacoes) {
     status_acum: meta.statusAcum,
     atualizado_por_usuario: meta.atualizadoPorUsuario?.nome ?? null,
     atualizado_em: meta.atualizadoEm,
+    ativo: meta.ativo,
+    inativado_em: meta.inativadoEm,
+    inativado_por_usuario: meta.inativadoPorUsuario?.nome ?? null,
     ...(meta.icIv === "IC" && meta.filhos
       ? {
           filhos: meta.filhos.map((f) => ({

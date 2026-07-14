@@ -45,6 +45,13 @@ enum AcaoAuditoria {
   @@map("acao_auditoria_type")
 }
 
+enum StatusProduto {
+  ativo
+  inativo
+
+  @@map("status_produto_type")
+}
+
 model Setor {
   id           String   @id @default(uuid()) @db.Uuid
   nome         String   @unique @db.VarChar(255)
@@ -55,11 +62,35 @@ model Setor {
 
   usuarios   Usuario[]
   metas      Meta[]
+  produtos   Produto[]
   auditorias Auditoria[]
 
   @@index([nome])
   @@index([email])
   @@map("setores")
+}
+
+model Produto {
+  id           String        @id @default(uuid()) @db.Uuid
+  nome         String        @db.VarChar(255)
+  descricao    String?
+  setorId      String        @map("setor_id") @db.Uuid
+  setor        Setor         @relation(fields: [setorId], references: [id])
+  status       StatusProduto @default(ativo)
+  criadoPor    String        @map("criado_por") @db.Uuid
+  criadoPorUsuario Usuario   @relation("ProdutoCriadoPor", fields: [criadoPor], references: [id])
+  criadoEm     DateTime      @default(now()) @map("criado_em")
+  atualizadoEm DateTime      @default(now()) @map("atualizado_em")
+  atualizadoPor String?      @map("atualizado_por") @db.Uuid
+  atualizadoPorUsuario Usuario? @relation("ProdutoAtualizadoPor", fields: [atualizadoPor], references: [id])
+
+  metas Meta[]
+
+  @@unique([nome, setorId])
+  @@index([setorId, status])
+  @@index([nome])
+  @@index([criadoEm])
+  @@map("produtos")
 }
 
 model Usuario {
@@ -76,8 +107,11 @@ model Usuario {
   atualizadoEm DateTime  @default(now()) @map("atualizado_em")
 
   metasAtualizadas Meta[]          @relation("MetaAtualizadoPor")
+  metasInativadas  Meta[]          @relation("MetaInativadoPor")
   historicos       MetaHistorico[]
   auditorias       Auditoria[]
+  produtosCriados     Produto[] @relation("ProdutoCriadoPor")
+  produtosAtualizados Produto[] @relation("ProdutoAtualizadoPor")
 
   @@index([email])
   @@index([setorId])
@@ -95,7 +129,8 @@ model Meta {
   ordem Int @default(0)
 
   // Agrupador visual — só preenchido no IC principal do grupo
-  produto String? @db.VarChar(255)
+  produtoId String?  @map("produto_id") @db.Uuid
+  produto   Produto? @relation(fields: [produtoId], references: [id])
 
   // Hierarquia
   icIv  IcIv    @map("ic_iv")
@@ -185,14 +220,23 @@ model Meta {
   atualizadoPor       String?   @map("atualizado_por") @db.Uuid
   atualizadoPorUsuario Usuario? @relation("MetaAtualizadoPor", fields: [atualizadoPor], references: [id])
 
+  // Inativação (soft delete) — ver OS-008
+  ativo             Boolean   @default(true)
+  inativadoEm       DateTime? @map("inativado_em")
+  inativadoPor      String?   @map("inativado_por") @db.Uuid
+  inativadoPorUsuario Usuario? @relation("MetaInativadoPor", fields: [inativadoPor], references: [id])
+
   historicos MetaHistorico[]
 
   @@index([setorId])
   @@index([ano])
   @@index([icIv])
   @@index([paiId])
+  @@index([produtoId])
   @@index([setorId, ano])
   @@index([setorId, ano, ordem])
+  @@index([ativo])
+  @@index([setorId, ativo])
   @@map("metas")
 }
 

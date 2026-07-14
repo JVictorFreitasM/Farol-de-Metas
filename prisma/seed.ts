@@ -28,7 +28,6 @@ const USUARIOS = [
 const RESPONSAVEL_PARA_SETOR: Record<string, string> = {
   'Anny Moraes':       'Anny Moraes',
   'Davi':              'Davi',
-  'Francilane':        'Francilane',
   'Francisca Adriele': 'Francisca Adriele',
   'Gustavo Borges':    'Gustavo Borges',
   'Maria Nadiane':     'Maria Nadiane',
@@ -82,6 +81,23 @@ async function main() {
     console.log(`   ✓ ${u.email} (${u.role})`)
   }
 
+  const admin = await prisma.usuario.findUniqueOrThrow({ where: { email: 'admin@farol.com' } })
+  const produtoMap = new Map<string, string>()
+
+  async function resolverProdutoId(nome: string | null | undefined, setorId: string): Promise<string | undefined> {
+    if (!nome) return undefined
+    const chave = `${setorId}:${nome}`
+    const existente = produtoMap.get(chave)
+    if (existente) return existente
+    const produto = await prisma.produto.upsert({
+      where: { nome_setorId: { nome, setorId } },
+      update: {},
+      create: { nome, setorId, criadoPor: admin.id },
+    })
+    produtoMap.set(chave, produto.id)
+    return produto.id
+  }
+
   // 3. Metas — 2 passagens para resolver hierarquia
   console.log('\n📊 Criando metas (2025)...')
 
@@ -105,13 +121,14 @@ async function main() {
     }
 
     const { acumMeta, acumReal } = await calcularAcumulado(m)
+    const produtoId = await resolverProdutoId(m.produto, setorId)
 
     const criado = await prisma.meta.create({
       data: {
         setorId,
         ano: 2025,
         ordem: m.ordem,
-        produto: m.produto ?? undefined,
+        produtoId,
         icIv: 'IC',
         indicador: m.indicador,
         responsavel: m.responsavel,
@@ -177,7 +194,6 @@ async function main() {
         setorId,
         ano: 2025,
         ordem: m.ordem,
-        produto: undefined,
         icIv: 'IV',
         paiId: paiId || undefined,
         indicador: m.indicador,

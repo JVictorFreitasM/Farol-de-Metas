@@ -20,7 +20,7 @@ relatoriosRouter.get("/dashboard", async (req, res, next) => {
     const setorId = resolveSetorId(req.usuario!, query.setor_id);
 
     const setor = await prisma.setor.findUnique({ where: { id: setorId } });
-    const ivs = await prisma.meta.findMany({ where: { setorId, ano: query.ano, icIv: "IV" } });
+    const ivs = await prisma.meta.findMany({ where: { setorId, ano: query.ano, icIv: "IV", ativo: true } });
 
     const totalIndicadores = ivs.length;
     const statusOk = ivs.filter((m) => m.statusAcum === "ok").length;
@@ -43,9 +43,29 @@ relatoriosRouter.get("/dashboard", async (req, res, next) => {
       return { mes: mes.toLowerCase(), status_ok: ok, status_nok: nok };
     });
 
+    const hoje = new Date();
+    const mesLimite = query.ano === hoje.getFullYear() ? hoje.getMonth() + 1 : 12;
+    const metasIncompletas = ivs
+      .map((meta) => {
+        const mesesFaltando = MESES.slice(0, mesLimite).filter((mes) => {
+          const metaCampo = `meta${mes}` as keyof Meta;
+          const realCampo = `real${mes}` as keyof Meta;
+          return meta[metaCampo] == null || meta[realCampo] == null;
+        });
+        return {
+          id: meta.id,
+          indicador: meta.indicador,
+          responsavel: meta.responsavel,
+          meses_faltando: mesesFaltando,
+          quantidade_faltando: mesesFaltando.length,
+        };
+      })
+      .filter((m) => m.quantidade_faltando > 0)
+      .sort((a, b) => b.quantidade_faltando - a.quantidade_faltando);
+
     const ics = await prisma.meta.findMany({
-      where: { setorId, ano: query.ano, icIv: "IC" },
-      include: { filhos: true },
+      where: { setorId, ano: query.ano, icIv: "IC", ativo: true },
+      include: { filhos: { where: { ativo: true } } },
     });
     const icComProblemas = ics
       .map((ic) => {
@@ -76,6 +96,7 @@ relatoriosRouter.get("/dashboard", async (req, res, next) => {
       metas_por_status: metasPorStatus,
       evolucao_mensal: evolucaoMensal,
       ic_com_problemas: icComProblemas,
+      metas_incompletas: metasIncompletas,
     });
   } catch (err) {
     next(err);
@@ -95,7 +116,7 @@ relatoriosRouter.get("/comparativa", authorize("gerente", "admin"), async (req, 
     const resultado = [];
 
     for (const setor of setores) {
-      const ivs = await prisma.meta.findMany({ where: { setorId: setor.id, ano: query.ano, icIv: "IV" } });
+      const ivs = await prisma.meta.findMany({ where: { setorId: setor.id, ano: query.ano, icIv: "IV", ativo: true } });
       const totalIndicadores = ivs.length;
       const statusOk = ivs.filter((m) => m.statusAcum === "ok").length;
       const percentual = totalIndicadores > 0 ? (statusOk / totalIndicadores) * 100 : 0;

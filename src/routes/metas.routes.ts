@@ -6,7 +6,7 @@ import { authenticate, authorize, resolveSetorId } from "../middleware/auth";
 import { badRequest, conflict, forbidden, notFound } from "../lib/errors";
 import { registrarAuditoria } from "../lib/auditoria";
 import { serializeMeta } from "../lib/serializers";
-import { calcularAcumuladoLinha, MESES, recalcularAgregadoIC } from "../lib/metasCalc";
+import { calcularAcumuladoLinha, calcularAcumuladoPeriodo, MESES, MesKey, recalcularAgregadoIC } from "../lib/metasCalc";
 
 export const metasRouter = Router();
 metasRouter.use(authenticate);
@@ -14,7 +14,9 @@ metasRouter.use(authenticate);
 const includeRelacoes = {
   setor: true,
   atualizadoPorUsuario: true,
+  inativadoPorUsuario: true,
   filhos: true,
+  produto: true,
 } satisfies Prisma.MetaInclude;
 
 /** Após alterar meta_x ou real_x de uma linha, recalcula seus acumulados e, se ela tiver
@@ -36,7 +38,7 @@ async function recalcularLinhaEPai(metaId: string, usuarioId: string) {
   const pai = await prisma.meta.findUnique({ where: { id: meta.paiId } });
   if (!pai || !pai.agregaFilhos) return null;
 
-  const filhos = await prisma.meta.findMany({ where: { paiId: pai.id } });
+  const filhos = await prisma.meta.findMany({ where: { paiId: pai.id, ativo: true } });
   const agregado = recalcularAgregadoIC(filhos);
 
   const dataMeses = Object.fromEntries([
@@ -60,6 +62,7 @@ async function recalcularLinhaEPai(metaId: string, usuarioId: string) {
 const listQuerySchema = z.object({
   setor_id: z.string().uuid().optional(),
   ano: z.coerce.number().int(),
+  incluir_inativos: z.enum(["true", "false"]).default("false"),
 });
 
 metasRouter.get("/", async (req, res, next) => {
@@ -68,12 +71,126 @@ metasRouter.get("/", async (req, res, next) => {
     const setorId = resolveSetorId(req.usuario!, query.setor_id);
 
     const metas = await prisma.meta.findMany({
-      where: { setorId, ano: query.ano },
+      where: {
+        setorId,
+        ano: query.ano,
+        ...(query.incluir_inativos === "true" ? {} : { ativo: true }),
+      },
       include: includeRelacoes,
       orderBy: { ordem: "asc" },
     });
 
     res.json({ data: metas.map(serializeMeta) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+metasRouter.patch("/:id/inativar", authorize("gerente"), async (req, res, next) => {
+  try {
+    const usuario = req.usuario!;
+    const meta = await prisma.meta.findUnique({ where: { id: req.params.id } });
+    if (!meta) throw notFound("Indicador não encontrado");
+    if (!meta.ativo) throw conflict("Este indicador já está inativo");
+
+    const metaInativada = await prisma.meta.update({
+      where: { id: meta.id },
+      data: { ativo: false, inativadoEm: new Date(), inativadoPor: usuario.id },
+      include: includeRelacoes,
+    });
+
+    if (meta.icIv === "IC") {
+      await prisma.meta.updateMany({
+        where: { paiId: meta.id, ativo: true },
+        data: { ativo: false, inativadoEm: new Date(), inativadoPor: usuario.id },
+      });
+    }
+
+    await registrarAuditoria(req, {
+      acao: "UPDATE",
+      tabela: "metas",
+      registroId: meta.id,
+      setorId: meta.setorId,
+      detalhes: { acao: "inativado", motivo: typeof req.body?.motivo === "string" ? req.body.motivo : null },
+    });
+
+    res.json({ data: serializeMeta(metaInativada), mensagem: "Indicador inativado com sucesso" });
+  } catch (err) {
+    next(err);
+  }
+});
+
+metasRouter.patch("/:id/ativar", authorize("gerente"), async (req, res, next) => {
+  try {
+    const meta = await prisma.meta.findUnique({ where: { id: req.params.id } });
+    if (!meta) throw notFound("Indicador não encontrado");
+    if (meta.ativo) throw conflict("Este indicador já está ativo");
+
+    const metaAtivada = await prisma.meta.update({
+      where: { id: meta.id },
+      data: { ativo: true, inativadoEm: null, inativadoPor: null },
+      include: includeRelacoes,
+    });
+
+    await registrarAuditoria(req, {
+      acao: "UPDATE",
+      tabela: "metas",
+      registroId: meta.id,
+      setorId: meta.setorId,
+      detalhes: { acao: "ativado" },
+    });
+
+    res.json({ data: serializeMeta(metaAtivada), mensagem: "Indicador ativado com sucesso" });
+  } catch (err) {
+    next(err);
+  }
+});
+
+const mesLowerParaMesKey: Record<string, MesKey> = Object.fromEntries(
+  MESES.map((mes) => [mes.toLowerCase(), mes])
+);
+
+const acumuladoPeriodoQuerySchema = z.object({
+  mes_inicio: z.enum(MESES.map((mes) => mes.toLowerCase()) as [string, ...string[]]),
+  mes_fim: z.enum(MESES.map((mes) => mes.toLowerCase()) as [string, ...string[]]),
+});
+
+metasRouter.get("/:id/acumulado-periodo", async (req, res, next) => {
+  try {
+    const query = acumuladoPeriodoQuerySchema.parse(req.query);
+    const meta = await prisma.meta.findUnique({ where: { id: req.params.id } });
+    if (!meta) throw notFound("Meta não encontrada");
+
+    const mesInicio = mesLowerParaMesKey[query.mes_inicio];
+    const mesFim = mesLowerParaMesKey[query.mes_fim];
+
+    let resultado;
+    try {
+      resultado = calcularAcumuladoPeriodo(meta, mesInicio, mesFim);
+    } catch (err) {
+      throw badRequest(err instanceof Error ? err.message : "Período inválido");
+    }
+
+    res.json({
+      id: meta.id,
+      indicador: meta.indicador,
+      periodo: {
+        mes_inicio: query.mes_inicio,
+        mes_fim: query.mes_fim,
+        quantidade_meses: resultado.mesesPeriodo.length,
+      },
+      acumulados: {
+        meta: resultado.acumMeta,
+        real: resultado.acumReal,
+        percentual: resultado.percentual,
+        status: resultado.status,
+      },
+      detalhes: resultado.detalhes.map((d) => ({
+        mes: d.mes.toLowerCase(),
+        meta: d.meta,
+        real: d.real,
+      })),
+    });
   } catch (err) {
     next(err);
   }
@@ -98,7 +215,7 @@ const criarMetaSchema = z.object({
   setor_id: z.string().uuid(),
   ano: z.coerce.number().int(),
   ordem: z.number().int().default(0),
-  produto: z.string().optional(),
+  produto_id: z.string().uuid().optional(),
   ic_iv: z.nativeEnum(IcIv),
   pai_id: z.string().uuid().optional(),
   indicador: z.string().min(1),
@@ -111,7 +228,7 @@ const criarMetaSchema = z.object({
   meta: mesesSchema.optional(),
 });
 
-metasRouter.post("/", authorize("gerente", "admin"), async (req, res, next) => {
+metasRouter.post("/", authorize("gerente"), async (req, res, next) => {
   try {
     const body = criarMetaSchema.parse(req.body);
     const usuario = req.usuario!;
@@ -128,7 +245,7 @@ metasRouter.post("/", authorize("gerente", "admin"), async (req, res, next) => {
         setorId: body.setor_id,
         ano: body.ano,
         ordem: body.ordem,
-        produto: body.produto,
+        produtoId: body.produto_id,
         icIv: body.ic_iv,
         paiId: body.pai_id,
         indicador: body.indicador,
@@ -175,6 +292,7 @@ metasRouter.post("/", authorize("gerente", "admin"), async (req, res, next) => {
 const editarMetaSchema = z.object({
   meta_ano: z.number().optional(),
   meta: mesesSchema.optional(),
+  produto_id: z.string().uuid().nullable().optional(),
 });
 
 metasRouter.put("/:id/meta", authorize("gerente", "admin"), async (req, res, next) => {
@@ -216,6 +334,7 @@ metasRouter.put("/:id/meta", authorize("gerente", "admin"), async (req, res, nex
         metaOut: body.meta?.out,
         metaNov: body.meta?.nov,
         metaDez: body.meta?.dez,
+        produtoId: body.produto_id,
         atualizadoPor: usuario.id,
       },
     });
@@ -361,7 +480,7 @@ metasRouter.delete("/:id", authorize("gerente", "admin"), async (req, res, next)
     if (meta.paiId) {
       const pai = await prisma.meta.findUnique({ where: { id: meta.paiId } });
       if (pai?.agregaFilhos) {
-        const filhos = await prisma.meta.findMany({ where: { paiId: pai.id } });
+        const filhos = await prisma.meta.findMany({ where: { paiId: pai.id, ativo: true } });
         const agregado = recalcularAgregadoIC(filhos);
         const dataMeses = Object.fromEntries([
           ...MESES.map((mes) => [`meta${mes}`, agregado.metaPorMes[mes]]),

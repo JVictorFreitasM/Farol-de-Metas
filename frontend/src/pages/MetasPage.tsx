@@ -14,6 +14,7 @@ type Aba = "tabela" | "dashboard";
 export function MetasPage() {
   const { usuario } = useAuth();
   const isGerente = usuario?.role === "admin" || usuario?.role === "gerente";
+  const podeCriar = usuario?.role === "gerente";
 
   const [ano, setAno] = useAnoSelecionado();
   const [setorId, setSetorId] = useState<string | undefined>(
@@ -23,8 +24,13 @@ export function MetasPage() {
   const [modalAberto, setModalAberto] = useState(false);
   const [mesSelecionado, setMesSelecionado] = useState<Mes>(() => MESES[new Date().getMonth()]);
   const [mesEscolhidoManualmente, setMesEscolhidoManualmente] = useState(false);
+  const [mostrarInativos, setMostrarInativos] = useState(false);
 
-  const { metas, setores, loading, recarregar, salvarReal, criar, deletar } = useMetas({ ano, setor_id: setorId });
+  const { metas, setores, loading, recarregar, salvarReal, criar, deletar, inativar, ativar } = useMetas({
+    ano,
+    setor_id: setorId,
+    incluir_inativos: mostrarInativos,
+  });
 
   useEffect(() => {
     if (mesEscolhidoManualmente || metas.length === 0) return;
@@ -59,6 +65,12 @@ export function MetasPage() {
           </select>
         </label>
       )}
+      {isGerente && (
+        <label className="form-checkbox">
+          <input type="checkbox" checked={mostrarInativos} onChange={(e) => setMostrarInativos(e.target.checked)} />
+          Mostrar inativos
+        </label>
+      )}
       <div className="tabs">
         <button className={aba === "tabela" ? "active" : ""} onClick={() => setAba("tabela")}>Tabela</button>
         <button className={aba === "dashboard" ? "active" : ""} onClick={() => setAba("dashboard")}>Dashboard</button>
@@ -68,8 +80,10 @@ export function MetasPage() {
 
   const toolbar = (
     <div className="metas-toolbar">
-      {isGerente ? (
+      {podeCriar ? (
         <button className="btn-primary" onClick={() => setModalAberto(true)}>+ Novo indicador</button>
+      ) : usuario?.role === "admin" ? (
+        <span className="texto-informativo">Apenas gerentes podem criar indicadores.</span>
       ) : (
         <span />
       )}
@@ -100,6 +114,8 @@ export function MetasPage() {
             usuarioSetorId={usuario.setor_id}
             onSalvarReal={salvarReal}
             onDeletar={deletar}
+            onInativar={inativar}
+            onAtivar={ativar}
           />
         </>
       )}

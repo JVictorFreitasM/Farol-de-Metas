@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { toast } from "react-toastify";
 import { CriarMetaBody } from "../services/metasService";
+import { useProdutos } from "../hooks/useProdutos";
 import { IcIv, Meta, Setor, TipoMeta } from "../types";
 
 const UNIDADES = ["%", "R$", "UN", "Tons", "nº", "D", "DD", "H", "Q", "CDI"];
@@ -30,10 +31,11 @@ export function CriarMetaModal({
   const [agregaFilhos, setAgregaFilhos] = useState(false);
   const [tipoAcumulado, setTipoAcumulado] = useState<"soma" | "media">("soma");
   const [metaAno, setMetaAno] = useState("");
-  const [produto, setProduto] = useState("");
+  const [produtoId, setProdutoId] = useState("");
   const [salvando, setSalvando] = useState(false);
 
-  const icsDoSetor = metasExistentes.filter((m) => m.ic_iv === "IC" && (!setorId || m.setor_id === setorId));
+  const icsDoSetor = metasExistentes.filter((m) => m.ic_iv === "IC" && m.ativo && (!setorId || m.setor_id === setorId));
+  const { produtos } = useProdutos({ setor_id: setorId, status: "ativo" });
 
   const handleSalvar = async () => {
     if (!setorId) return toast.error("Selecione um setor");
@@ -55,7 +57,7 @@ export function CriarMetaModal({
         agrega_filhos: icIv === "IC" ? agregaFilhos : undefined,
         tipo_acumulado: tipoAcumulado,
         meta_ano: metaAno ? Number(metaAno) : undefined,
-        produto: icIv === "IC" && produto.trim() ? produto.trim() : undefined,
+        produto_id: icIv === "IC" && produtoId ? produtoId : undefined,
       });
     } finally {
       setSalvando(false);
@@ -100,8 +102,13 @@ export function CriarMetaModal({
 
           {icIv === "IC" && (
             <label className="form-group">
-              Produto (agrupador, opcional)
-              <input className="form-input" value={produto} onChange={(e) => setProduto(e.target.value)} />
+              Produto (opcional)
+              <select className="form-input" value={produtoId} onChange={(e) => setProdutoId(e.target.value)}>
+                <option value="">Sem produto</option>
+                {produtos.map((p) => (
+                  <option key={p.id} value={p.id}>{p.nome}</option>
+                ))}
+              </select>
             </label>
           )}
 

@@ -1,9 +1,10 @@
 import { apiFetch } from "./api";
-import { IcIv, Meta, Setor, TipoMeta } from "../types";
+import { IcIv, Meta, Mes, Setor, StatusMeta, TipoMeta } from "../types";
 
 export interface ListarMetasParams {
   setor_id?: string;
   ano: number;
+  incluir_inativos?: boolean;
 }
 
 export function listarMetas(params: ListarMetasParams): Promise<{ data: Meta[] }> {
@@ -37,7 +38,7 @@ export interface CriarMetaBody {
   setor_id: string;
   ano: number;
   ordem?: number;
-  produto?: string;
+  produto_id?: string;
   ic_iv: IcIv;
   pai_id?: string;
   indicador: string;
@@ -54,7 +55,7 @@ export function criarMeta(body: CriarMetaBody) {
   return apiFetch(`/metas`, { method: "POST", body: JSON.stringify(body) });
 }
 
-export function editarMeta(id: string, body: { meta_ano?: number; meta?: MesesBody }) {
+export function editarMeta(id: string, body: { meta_ano?: number; meta?: MesesBody; produto_id?: string | null }) {
   return apiFetch(`/metas/${id}/meta`, { method: "PUT", body: JSON.stringify(body) });
 }
 
@@ -64,4 +65,29 @@ export function editarReal(id: string, body: { real: MesesBody }) {
 
 export function deletarMeta(id: string) {
   return apiFetch(`/metas/${id}`, { method: "DELETE" });
+}
+
+export function inativarMeta(id: string, motivo?: string) {
+  return apiFetch(`/metas/${id}/inativar`, { method: "PATCH", body: JSON.stringify({ motivo }) });
+}
+
+export function ativarMeta(id: string) {
+  return apiFetch(`/metas/${id}/ativar`, { method: "PATCH" });
+}
+
+export interface AcumuladoPeriodoResponse {
+  id: string;
+  indicador: string;
+  periodo: { mes_inicio: Mes; mes_fim: Mes; quantidade_meses: number };
+  acumulados: {
+    meta: string | number | null;
+    real: string | number | null;
+    percentual: string | number | null;
+    status: StatusMeta | null;
+  };
+  detalhes: { mes: Mes; meta: string | number | null; real: string | number | null }[];
+}
+
+export function obterAcumuladoPeriodo(id: string, mesInicio: Mes, mesFim: Mes): Promise<AcumuladoPeriodoResponse> {
+  return apiFetch<AcumuladoPeriodoResponse>(`/metas/${id}/acumulado-periodo?mes_inicio=${mesInicio}&mes_fim=${mesFim}`);
 }

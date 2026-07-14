@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "react-toastify";
 import {
+  ativarMeta,
   criarMeta,
   CriarMetaBody,
   deletarMeta,
   editarMeta,
   editarReal,
+  inativarMeta,
   listarMetas,
   ListarMetasParams,
   listarSetores,
@@ -87,5 +89,27 @@ export function useMetas(params: ListarMetasParams) {
     }
   };
 
-  return { metas, setores, loading, recarregar: carregar, salvarMeta, salvarReal, criar, deletar };
+  const inativar = async (id: string, motivo?: string) => {
+    try {
+      await inativarMeta(id, motivo);
+      toast.success("Indicador inativado!");
+      await carregar();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro ao inativar indicador");
+      throw err;
+    }
+  };
+
+  const ativar = async (id: string) => {
+    try {
+      await ativarMeta(id);
+      toast.success("Indicador ativado!");
+      await carregar();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro ao ativar indicador");
+      throw err;
+    }
+  };
+
+  return { metas, setores, loading, recarregar: carregar, salvarMeta, salvarReal, criar, deletar, inativar, ativar };
 }

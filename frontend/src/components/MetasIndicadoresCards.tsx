@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { MesesBody } from "../services/metasService";
+import { AcumuladoTooltip } from "./AcumuladoTooltip";
 import { Meta, MESES_LABEL, Mes, Role } from "../types";
 
 interface ItemIc {
@@ -69,6 +70,8 @@ export function MetasIndicadoresCards({
   usuarioSetorId,
   onSalvarReal,
   onDeletar,
+  onInativar,
+  onAtivar,
 }: {
   metas: Meta[];
   mes: Mes;
@@ -76,13 +79,17 @@ export function MetasIndicadoresCards({
   usuarioSetorId: string | null;
   onSalvarReal: (id: string, body: MesesBody) => Promise<void>;
   onDeletar: (id: string) => Promise<void>;
+  onInativar: (id: string, motivo?: string) => Promise<void>;
+  onAtivar: (id: string) => Promise<void>;
 }) {
   const [editandoId, setEditandoId] = useState<string | null>(null);
   const [valorEditado, setValorEditado] = useState("");
   const [confirmandoExclusao, setConfirmandoExclusao] = useState<string | null>(null);
+  const [confirmandoInativacao, setConfirmandoInativacao] = useState<string | null>(null);
   const [expandido, setExpandido] = useState<Record<string, boolean>>({});
 
   const isGerente = usuarioRole === "gerente" || usuarioRole === "admin";
+  const podeInativar = usuarioRole === "gerente";
   const podeEditarReal = (meta: Meta) =>
     !meta.agrega_filhos && (isGerente || (usuarioRole === "responsavel" && usuarioSetorId === meta.setor_id));
 
@@ -152,17 +159,22 @@ export function MetasIndicadoresCards({
     const isIC = meta.ic_iv === "IC";
 
     return (
-      <div key={meta.id} className={`indicador-row ${isIC ? "tipo-ic" : "tipo-iv"}`}>
+      <div key={meta.id} className={`indicador-row ${isIC ? "tipo-ic" : "tipo-iv"} ${meta.ativo ? "" : "indicador-row-inativo"}`}>
         {opcoes?.chevron}
         <div className="indicador-row-tipo">
           <span className={`badge-ic-iv ${isIC ? "badge-ic" : "badge-iv"}`}>{meta.ic_iv}</span>
         </div>
 
         <div className="indicador-row-nome">
-          <div className="indicador-row-nome-texto" title={meta.indicador}>
-            {meta.indicador}
+          <div className="indicador-row-nome-texto">
+            <AcumuladoTooltip meta={meta}>{meta.indicador}</AcumuladoTooltip>
             {opcoes?.contador !== undefined && opcoes.contador > 0 && (
               <span className="indicador-row-contador"> ({opcoes.contador} IV{opcoes.contador > 1 ? "s" : ""})</span>
+            )}
+            {!meta.ativo && (
+              <span className="badge-inativo">
+                Inativo{meta.inativado_em ? ` desde ${new Date(meta.inativado_em).toLocaleDateString("pt-BR")}` : ""}
+              </span>
             )}
           </div>
           <div className="indicador-row-responsavel">{meta.responsavel}</div>
@@ -204,6 +216,35 @@ export function MetasIndicadoresCards({
           <span className={`badge-status ${status ?? "vazio"}`}>
             {status === "ok" ? "OK" : status === "nok" ? "NOK" : "-"}
           </span>
+
+          {podeInativar &&
+            (meta.ativo ? (
+              confirmandoInativacao === meta.id ? (
+                <span className="acoes-confirmar">
+                  <button
+                    className="btn-link btn-link-warning"
+                    onClick={async () => {
+                      await onInativar(meta.id);
+                      setConfirmandoInativacao(null);
+                    }}
+                  >
+                    Confirmar
+                  </button>
+                  <button className="btn-link" onClick={() => setConfirmandoInativacao(null)}>
+                    Cancelar
+                  </button>
+                </span>
+              ) : (
+                <button className="btn-link btn-link-warning" onClick={() => setConfirmandoInativacao(meta.id)}>
+                  Inativar
+                </button>
+              )
+            ) : (
+              <button className="btn-link btn-link-success" onClick={() => onAtivar(meta.id)}>
+                Ativar
+              </button>
+            ))}
+
           {isGerente &&
             (confirmandoExclusao === meta.id ? (
               <span className="acoes-confirmar">
