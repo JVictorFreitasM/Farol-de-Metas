@@ -1,5 +1,6 @@
 import { createContext, ReactNode, useContext, useEffect, useState } from "react";
 import { login as loginRequest } from "../services/authService";
+import { ANO_SESSION_KEY } from "./useAnoSelecionado";
 import { Usuario } from "../types";
 
 interface AuthContextValue {
@@ -13,7 +14,10 @@ const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
 function decodeUsuarioFromToken(token: string): Usuario | null {
   try {
-    const payload = JSON.parse(atob(token.split(".")[1]));
+    const base64Url = token.split(".")[1];
+    const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), "=");
+    const payload = JSON.parse(atob(padded));
     return {
       id: payload.sub,
       nome: payload.nome,
@@ -48,6 +52,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = () => {
     localStorage.removeItem("auth_token");
+    sessionStorage.removeItem(ANO_SESSION_KEY);
     setUsuario(null);
     window.location.href = "/login";
   };

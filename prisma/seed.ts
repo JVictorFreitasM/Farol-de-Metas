@@ -7,7 +7,6 @@ const prisma = new PrismaClient()
 const SETORES = [
   { nome: 'Anny Moraes',       email: 'anny.moraes@company.com' },
   { nome: 'Davi',              email: 'davi@company.com' },
-  { nome: 'Francilane',        email: 'francilane@company.com' },
   { nome: 'Francisca Adriele', email: 'francisca.adriele@company.com' },
   { nome: 'Gustavo Borges',    email: 'gustavo.borges@company.com' },
   { nome: 'Maria Nadiane',     email: 'maria.nadiane@company.com' },
@@ -19,7 +18,6 @@ const USUARIOS = [
   { email: 'gerente@farol.com',          nome: 'Gerente',            senha: 'Gerente@2025',     role: 'gerente'     as const, setor: null },
   { email: 'anny@farol.com',             nome: 'Anny Moraes',        senha: 'Anny@2025',        role: 'responsavel' as const, setor: 'Anny Moraes' },
   { email: 'davi@farol.com',             nome: 'Davi',               senha: 'Davi@2025',        role: 'responsavel' as const, setor: 'Davi' },
-  { email: 'francilane@farol.com',       nome: 'Francilane',         senha: 'Franc@2025',       role: 'responsavel' as const, setor: 'Francilane' },
   { email: 'francisca@farol.com',        nome: 'Francisca Adriele',  senha: 'Franc@2025',       role: 'responsavel' as const, setor: 'Francisca Adriele' },
   { email: 'gustavo@farol.com',          nome: 'Gustavo Borges',     senha: 'Gustavo@2025',     role: 'responsavel' as const, setor: 'Gustavo Borges' },
   { email: 'maria.nadiane@farol.com',    nome: 'Maria Nadiane',      senha: 'Maria@2025',       role: 'responsavel' as const, setor: 'Maria Nadiane' },

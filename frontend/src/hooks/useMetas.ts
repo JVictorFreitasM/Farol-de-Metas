@@ -21,9 +21,16 @@ export function useMetas(params: ListarMetasParams) {
   const carregar = useCallback(async () => {
     setLoading(true);
     try {
-      const [respMetas, respSetores] = await Promise.all([listarMetas(params), listarSetores()]);
-      setMetas(respMetas.data);
+      const respSetores = await listarSetores();
       setSetores(respSetores);
+
+      if (!params.setor_id) {
+        setMetas([]);
+        return;
+      }
+
+      const respMetas = await listarMetas(params);
+      setMetas(respMetas.data);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Erro ao carregar metas");
     } finally {

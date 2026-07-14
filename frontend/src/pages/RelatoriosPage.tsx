@@ -4,8 +4,10 @@ import { AppLayout } from "../components/AppLayout";
 import { RelatorioComparativa } from "../components/RelatorioComparativa";
 import { StatusRoscaChart, TendenciaMensalChart } from "../components/DashboardCharts";
 import { useAuth } from "../hooks/useAuth";
+import { gerarOpcoesAno, useAnoSelecionado } from "../hooks/useAnoSelecionado";
 import { comparativaSetores, dashboardSetor } from "../services/relatoriosService";
-import { ComparativaSetor, DashboardResumo } from "../types";
+import { listarSetores } from "../services/metasService";
+import { ComparativaSetor, DashboardResumo, Setor } from "../types";
 
 type Aba = "dashboard" | "comparativa";
 
@@ -13,32 +15,58 @@ export function RelatoriosPage() {
   const { usuario } = useAuth();
   const podeVerComparativa = usuario?.role === "gerente" || usuario?.role === "admin";
   const [aba, setAba] = useState<Aba>("dashboard");
-  const [ano, setAno] = useState(new Date().getFullYear());
+  const [ano, setAno] = useAnoSelecionado();
+  const [setores, setSetores] = useState<Setor[]>([]);
+  const [setorId, setSetorId] = useState<string | undefined>(
+    usuario?.role === "responsavel" ? usuario.setor_id ?? undefined : undefined
+  );
   const [dados, setDados] = useState<DashboardResumo | null>(null);
-  const [setores, setSetores] = useState<ComparativaSetor[]>([]);
+  const [comparativa, setComparativa] = useState<ComparativaSetor[]>([]);
+
+  useEffect(() => {
+    if (!podeVerComparativa) return;
+    listarSetores()
+      .then(setSetores)
+      .catch((err) => toast.error(err.message));
+  }, [podeVerComparativa]);
 
   useEffect(() => {
     if (aba === "dashboard") {
-      dashboardSetor(usuario?.role === "responsavel" ? usuario.setor_id ?? undefined : undefined, ano, "ano")
+      if (!setorId) {
+        setDados(null);
+        return;
+      }
+      dashboardSetor(setorId, ano, "ano")
         .then(setDados)
         .catch((err) => toast.error(err.message));
     } else {
       comparativaSetores(ano, "ano")
-        .then((r) => setSetores(r.setores))
+        .then((r) => setComparativa(r.setores))
         .catch((err) => toast.error(err.message));
     }
-  }, [aba, ano, usuario]);
+  }, [aba, ano, setorId]);
 
   const filtros = (
     <div className="filtros">
       <label>
         Ano
         <select value={ano} onChange={(e) => setAno(Number(e.target.value))}>
-          {[ano - 1, ano, ano + 1].map((a) => (
-            <option key={a} value={a}>{a}</option>
+          {gerarOpcoesAno().map((opcao) => (
+            <option key={opcao} value={opcao}>{opcao}</option>
           ))}
         </select>
       </label>
+      {podeVerComparativa && aba === "dashboard" && (
+        <label>
+          Setor
+          <select value={setorId ?? ""} onChange={(e) => setSetorId(e.target.value || undefined)}>
+            <option value="">Selecione...</option>
+            {setores.map((s) => (
+              <option key={s.id} value={s.id}>{s.nome}</option>
+            ))}
+          </select>
+        </label>
+      )}
     </div>
   );
 
@@ -54,6 +82,8 @@ export function RelatoriosPage() {
           </button>
         )}
       </div>
+
+      {aba === "dashboard" && podeVerComparativa && !setorId && <p>Selecione um setor para ver o dashboard.</p>}
 
       {aba === "dashboard" && dados && (
         <>
@@ -100,7 +130,7 @@ export function RelatoriosPage() {
         </>
       )}
 
-      {aba === "comparativa" && podeVerComparativa && <RelatorioComparativa setores={setores} />}
+      {aba === "comparativa" && podeVerComparativa && <RelatorioComparativa setores={comparativa} />}
     </AppLayout>
   );
 }

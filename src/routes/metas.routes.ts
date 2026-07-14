@@ -39,7 +39,10 @@ async function recalcularLinhaEPai(metaId: string, usuarioId: string) {
   const filhos = await prisma.meta.findMany({ where: { paiId: pai.id } });
   const agregado = recalcularAgregadoIC(filhos);
 
-  const dataMeses = Object.fromEntries(MESES.map((mes) => [`meta${mes}`, agregado.metaPorMes[mes]]));
+  const dataMeses = Object.fromEntries([
+    ...MESES.map((mes) => [`meta${mes}`, agregado.metaPorMes[mes]]),
+    ...MESES.map((mes) => [`real${mes}`, agregado.realPorMes[mes]]),
+  ]);
 
   const paiAtualizado = await prisma.meta.update({
     where: { id: pai.id },
@@ -360,7 +363,10 @@ metasRouter.delete("/:id", authorize("gerente", "admin"), async (req, res, next)
       if (pai?.agregaFilhos) {
         const filhos = await prisma.meta.findMany({ where: { paiId: pai.id } });
         const agregado = recalcularAgregadoIC(filhos);
-        const dataMeses = Object.fromEntries(MESES.map((mes) => [`meta${mes}`, agregado.metaPorMes[mes]]));
+        const dataMeses = Object.fromEntries([
+          ...MESES.map((mes) => [`meta${mes}`, agregado.metaPorMes[mes]]),
+          ...MESES.map((mes) => [`real${mes}`, agregado.realPorMes[mes]]),
+        ]);
         paiAtualizado = await prisma.meta.update({
           where: { id: pai.id },
           data: { ...dataMeses, acumMeta: agregado.acumMeta, acumReal: agregado.acumReal, atualizadoPor: usuario.id },

@@ -1,5 +1,7 @@
+import { useState } from "react";
 import ReactECharts from "echarts-for-react";
-import { Meta, MESES, MESES_LABEL } from "../types";
+import { Meta, MESES, MESES_LABEL, Mes } from "../types";
+import { MonthCardsOverview } from "./MonthCardsOverview";
 
 const COR_OK = "#10b981";
 const COR_NOK = "#ef4444";
@@ -9,9 +11,18 @@ const COR_PRIMARIA = "#3b82f6";
 export function MetasDashboard({ metas, ano }: { metas: Meta[]; ano: number }) {
   const ics = metas.filter((m) => m.ic_iv === "IC");
 
-  const qtdOk = ics.filter((m) => m.status_acum === "ok").length;
-  const qtdNok = ics.filter((m) => m.status_acum === "nok").length;
-  const qtdSemDados = ics.filter((m) => m.status_acum === null).length;
+  const [mesSelecionado, setMesSelecionado] = useState<Mes>(() => {
+    for (let i = MESES.length - 1; i >= 0; i--) {
+      if (ics.some((m) => m.meses[MESES[i]].real !== null)) {
+        return MESES[i];
+      }
+    }
+    return MESES[MESES.length - 1];
+  });
+
+  const qtdOk = ics.filter((m) => m.meses[mesSelecionado].status === "ok").length;
+  const qtdNok = ics.filter((m) => m.meses[mesSelecionado].status === "nok").length;
+  const qtdSemDados = ics.filter((m) => m.meses[mesSelecionado].status === null).length;
 
   const porSetor = new Map<string, { ok: number; nok: number }>();
   for (const ic of ics) {
@@ -25,7 +36,11 @@ export function MetasDashboard({ metas, ano }: { metas: Meta[]; ano: number }) {
   const dadosOk = setoresLabels.map((s) => porSetor.get(s)!.ok);
   const dadosNok = setoresLabels.map((s) => porSetor.get(s)!.nok);
 
-  const dadosPorMes = MESES.map((mes) => ics.filter((ic) => ic.meses[mes].status === "ok").length);
+  const mesIndex = MESES.indexOf(mesSelecionado);
+  const inicioIndex = Math.max(0, mesIndex - 3);
+  const mesesGrafico = MESES.slice(inicioIndex, mesIndex + 1);
+  const labelsGrafico = mesesGrafico.map((mes) => MESES_LABEL[mes]);
+  const dadosPorMes = mesesGrafico.map((mes) => ics.filter((ic) => ic.meses[mes].status === "ok").length);
 
   const opcaoRosca = {
     tooltip: { trigger: "item" },
@@ -59,7 +74,7 @@ export function MetasDashboard({ metas, ano }: { metas: Meta[]; ano: number }) {
   const opcaoLinha = {
     tooltip: { trigger: "axis" },
     grid: { left: "5%", right: "5%", top: 30, bottom: 30 },
-    xAxis: { type: "category", data: MESES.map((mes) => MESES_LABEL[mes]) },
+    xAxis: { type: "category", data: labelsGrafico },
     yAxis: { type: "value" },
     series: [
       {
@@ -75,6 +90,8 @@ export function MetasDashboard({ metas, ano }: { metas: Meta[]; ano: number }) {
 
   return (
     <div>
+      <MonthCardsOverview metas={ics} mesSelecionado={mesSelecionado} onMesSelecionado={setMesSelecionado} />
+
       <div className="cards-row">
         <div className="card">
           <div className="card-title">Total de ICs</div>
@@ -96,7 +113,7 @@ export function MetasDashboard({ metas, ano }: { metas: Meta[]; ano: number }) {
 
       <div className="charts-row">
         <div className="card">
-          <div className="card-title">Status geral dos ICs</div>
+          <div className="card-title">Status geral dos ICs — {MESES_LABEL[mesSelecionado]}</div>
           <ReactECharts option={opcaoRosca} style={{ height: 280 }} />
         </div>
         <div className="card">
@@ -106,7 +123,9 @@ export function MetasDashboard({ metas, ano }: { metas: Meta[]; ano: number }) {
       </div>
 
       <div className="card">
-        <div className="card-title">Evolução mensal — ICs em OK ({ano})</div>
+        <div className="card-title">
+          Evolução mensal — ICs em OK ({labelsGrafico[0]} a {labelsGrafico[labelsGrafico.length - 1]}, {ano})
+        </div>
         <ReactECharts option={opcaoLinha} style={{ height: 240 }} />
       </div>
     </div>

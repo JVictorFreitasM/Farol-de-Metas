@@ -30,15 +30,22 @@ export function calcularAcumuladoLinha(meta: Meta, tipo: "meta" | "real"): Decim
  */
 export function recalcularAgregadoIC(filhos: Meta[]): {
   metaPorMes: Record<MesKey, Decimal | null>;
+  realPorMes: Record<MesKey, Decimal | null>;
   acumMeta: Decimal | null;
   acumReal: Decimal | null;
 } {
   const metaPorMes = {} as Record<MesKey, Decimal | null>;
+  const realPorMes = {} as Record<MesKey, Decimal | null>;
   for (const mes of MESES) {
-    const valores = filhos
+    const valoresMeta = filhos
       .map((f) => f[campoMeta(mes)] as Decimal | null)
       .filter((v): v is Decimal => v != null);
-    metaPorMes[mes] = valores.length ? valores.reduce((acc, v) => acc.plus(v), new Decimal(0)) : null;
+    metaPorMes[mes] = valoresMeta.length ? valoresMeta.reduce((acc, v) => acc.plus(v), new Decimal(0)) : null;
+
+    const valoresReal = filhos
+      .map((f) => f[campoReal(mes)] as Decimal | null)
+      .filter((v): v is Decimal => v != null);
+    realPorMes[mes] = valoresReal.length ? valoresReal.reduce((acc, v) => acc.plus(v), new Decimal(0)) : null;
   }
 
   const acumMetaValores = filhos.map((f) => f.acumMeta).filter((v): v is Decimal => v != null);
@@ -46,6 +53,7 @@ export function recalcularAgregadoIC(filhos: Meta[]): {
 
   return {
     metaPorMes,
+    realPorMes,
     acumMeta: acumMetaValores.length ? acumMetaValores.reduce((acc, v) => acc.plus(v), new Decimal(0)) : null,
     acumReal: acumRealValores.length ? acumRealValores.reduce((acc, v) => acc.plus(v), new Decimal(0)) : null,
   };

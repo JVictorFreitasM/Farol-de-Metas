@@ -1,12 +1,16 @@
 import { NavLink } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
+import farolIcon from "../assets/farol_de_metas_icon.svg";
 
 export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { usuario, logout } = useAuth();
 
   return (
     <aside className={`sidebar ${open ? "open" : ""}`}>
-      <div className="sidebar-logo">🚦 FAROL</div>
+      <div className="sidebar-logo">
+        <img src={farolIcon} alt="Farol de Metas" className="sidebar-logo-img" />
+        FAROL
+      </div>
 
       <nav className="sidebar-nav">
         <div className="sidebar-section">Principal</div>

@@ -1,5 +1,4 @@
 import { Router } from "express";
-import rateLimit from "express-rate-limit";
 import { z } from "zod";
 import { prisma } from "../lib/prisma";
 import { signToken } from "../lib/jwt";
@@ -8,15 +7,6 @@ import { unauthorized } from "../lib/errors";
 import { registrarAuditoria } from "../lib/auditoria";
 
 export const authRouter = Router();
-
-// OS-003 §9.4: máx 5 tentativas / 5 min por IP contra brute force
-const loginLimiter = rateLimit({
-  windowMs: 5 * 60 * 1000,
-  limit: 5,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { erro: "Muitas tentativas de login. Tente novamente em 5 minutos." },
-});
 
 const loginSchema = z.object({
   email: z.string().email(),
@@ -32,7 +22,7 @@ async function registrarTentativaFalha(req: Parameters<typeof registrarAuditoria
   });
 }
 
-authRouter.post("/login", loginLimiter, async (req, res, next) => {
+authRouter.post("/login", async (req, res, next) => {
   try {
     const { email, senha } = loginSchema.parse(req.body);
 
