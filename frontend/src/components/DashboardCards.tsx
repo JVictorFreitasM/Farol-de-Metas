@@ -72,44 +72,48 @@ export function DashboardCards({
           </div>
         </div>
 
-        {expandido && (
-          <div className="card-setor-detalhes">
-            <div className="card-setor-secao">
-              <strong>Metas Pendentes ({MESES_LABEL[mes]})</strong>
-              {metasPendentes.length === 0 ? (
-                <p className="texto-informativo">Todas as metas foram preenchidas neste mês.</p>
-              ) : (
-                <ul className="metas-pendentes-lista">
-                  {metasPendentes.map((m) => (
-                    <li key={m.id}>
-                      <strong>{m.indicador}</strong> — {m.responsavel}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
+        <div className={`colapsavel card-setor-colapsavel ${expandido ? "" : "colapsado"}`}>
+          <div>
+            <div className="card-setor-detalhes">
+              <div className="card-setor-secao">
+                <strong>Metas Pendentes ({MESES_LABEL[mes]})</strong>
+                {metasPendentes.length === 0 ? (
+                  <p className="texto-informativo">Todas as metas foram preenchidas neste mês.</p>
+                ) : (
+                  <ul className="metas-pendentes-lista">
+                    {metasPendentes.map((m) => (
+                      <li key={m.id}>
+                        <strong>{m.indicador}</strong> — {m.responsavel}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
 
-            <div className="card-setor-secao">
-              <strong>Metas Não Batidas ({MESES_LABEL[mes]})</strong>
-              {metasNaoBatidas.length === 0 ? (
-                <p className="texto-informativo">Nenhuma meta abaixo do esperado neste mês.</p>
-              ) : (
-                <ul className="metas-pendentes-lista">
-                  {metasNaoBatidas.map((m) => (
-                    <li key={m.id}>
-                      <strong>{m.indicador}</strong> — {m.responsavel}{" "}
-                      <span className="texto-diferenca">({m.percentual.toFixed(0)}%)</span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
+              <div className="card-setor-secao">
+                <strong>Metas Não Batidas ({MESES_LABEL[mes]})</strong>
+                {metasNaoBatidas.length === 0 ? (
+                  <p className="texto-informativo">Nenhuma meta abaixo do esperado neste mês.</p>
+                ) : (
+                  <ul className="metas-pendentes-lista">
+                    {metasNaoBatidas.map((m) => (
+                      <li key={m.id}>
+                        <strong>{m.indicador}</strong> — {m.responsavel}{" "}
+                        <span className={m.percentual < 75 ? "texto-diferenca" : "texto-percentual"}>
+                          ({m.percentual.toFixed(0)}%)
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
 
-            <Link className="btn-secondary" to="/metas" onClick={(e) => e.stopPropagation()}>
-              Editar
-            </Link>
+              <Link className="btn-secondary" to="/metas" onClick={(e) => e.stopPropagation()}>
+                Editar
+              </Link>
+            </div>
           </div>
-        )}
+        </div>
       </div>
       <div className="card">
         <div className="card-title">🎯 Metas Atingidas</div>

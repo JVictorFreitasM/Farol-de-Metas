@@ -4,7 +4,6 @@ import { toast } from "react-toastify";
 import { AppLayout } from "../components/AppLayout";
 import { DashboardCards } from "../components/DashboardCards";
 import { StatusRoscaChart, TendenciaMensalChart } from "../components/DashboardCharts";
-import { MetasNaoPreenchidas } from "../components/MetasNaoPreenchidas";
 import { useAuth } from "../hooks/useAuth";
 import { gerarOpcoesAno, useAnoSelecionado } from "../hooks/useAnoSelecionado";
 import { useSetorSelecionado } from "../hooks/useSetorSelecionado";
@@ -186,8 +185,6 @@ export function DashboardPage() {
             expandido={cardSetorExpandido}
             onToggleExpandir={() => setCardSetorExpandido((v) => !v)}
           />
-
-          <MetasNaoPreenchidas metas={dados.metas_incompletas} />
 
           <div className="charts-row">
             <div className="card">

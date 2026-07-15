@@ -489,6 +489,15 @@ td.editing input {
   color: var(--nok);
   font-weight: 600;
 }
+.texto-percentual {
+  color: var(--text-muted);
+  font-weight: 600;
+}
+/* Expansão suave do card de setor: reusa o truque grid-rows do .colapsavel
+   com timing 0.32s ease-in-out (ver OS expansão animada). */
+.card-setor-colapsavel {
+  transition: grid-template-rows 0.32s ease-in-out, opacity 0.32s ease-in-out;
+}
 
 /* Indicadores agrupados por produto, com hierarquia IC (destaque) / IV (subordinado) */
 .produtos-wrapper {
