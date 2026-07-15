@@ -406,6 +406,19 @@ td.editing input {
   color: var(--nok);
   font-weight: 700;
 }
+.status-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  vertical-align: middle;
+}
+.status-dot-ok {
+  background: var(--ok);
+}
+.status-dot-nok {
+  background: var(--nok);
+}
 
 /* Indicadores agrupados por produto, com hierarquia IC (destaque) / IV (subordinado) */
 .produtos-wrapper {

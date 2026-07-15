@@ -143,6 +143,7 @@ export interface ComparativaSetor {
   status_ok: number;
   percentual_atingimento: number;
   ranking: number;
+  consolidacao_geral: { percentual_preenchido: number; completo: boolean } | null;
 }
 
 export interface ComparativaResponse {

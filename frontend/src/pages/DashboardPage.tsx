@@ -8,12 +8,13 @@ import { useAuth } from "../hooks/useAuth";
 import { gerarOpcoesAno, useAnoSelecionado } from "../hooks/useAnoSelecionado";
 import { comparativaSetores, dashboardSetor } from "../services/relatoriosService";
 import { listarSetores } from "../services/metasService";
-import { ComparativaSetor, DashboardResumo, Setor } from "../types";
+import { ComparativaSetor, DashboardResumo, MESES, MESES_LABEL, Mes, Setor } from "../types";
 
 export function DashboardPage() {
   const { usuario } = useAuth();
   const isGerente = usuario?.role === "gerente" || usuario?.role === "admin";
   const [ano, setAno] = useAnoSelecionado();
+  const [mes, setMes] = useState<Mes>(MESES[new Date().getMonth()]);
   const [setores, setSetores] = useState<Setor[]>([]);
   const [setorId, setSetorId] = useState<string | undefined>(usuario?.role === "responsavel" ? usuario.setor_id ?? undefined : undefined);
   const [dados, setDados] = useState<DashboardResumo | null>(null);
@@ -29,11 +30,11 @@ export function DashboardPage() {
 
   useEffect(() => {
     if (isGerente) {
-      comparativaSetores(ano, "ano")
+      comparativaSetores(ano, "ano", mes)
         .then((r) => setRanking(r.setores))
         .catch(() => {});
     }
-  }, [ano, isGerente]);
+  }, [ano, mes, isGerente]);
 
   useEffect(() => {
     let ativo = true;
@@ -63,6 +64,14 @@ export function DashboardPage() {
             ))}
           </select>
         </label>
+        <label>
+          Mês
+          <select value={mes} onChange={(e) => setMes(e.target.value as Mes)}>
+            {MESES.map((opcao) => (
+              <option key={opcao} value={opcao}>{MESES_LABEL[opcao]}</option>
+            ))}
+          </select>
+        </label>
         {isGerente && (
           <label>
             Setor
@@ -84,6 +93,7 @@ export function DashboardPage() {
               <tr>
                 <th>#</th>
                 <th>Setor</th>
+                <th>Consolidação Geral</th>
                 <th>% Atingimento</th>
               </tr>
             </thead>
@@ -92,6 +102,14 @@ export function DashboardPage() {
                 <tr key={s.nome_setor}>
                   <td>{s.ranking}</td>
                   <td>{s.nome_setor}</td>
+                  <td>
+                    {s.consolidacao_geral && (
+                      <span title={`${s.consolidacao_geral.percentual_preenchido.toFixed(0)}% preenchido em ${MESES_LABEL[mes]}`}>
+                        <span className={`status-dot ${s.consolidacao_geral.completo ? "status-dot-ok" : "status-dot-nok"}`} />{" "}
+                        {s.consolidacao_geral.percentual_preenchido.toFixed(0)}%
+                      </span>
+                    )}
+                  </td>
                   <td>{s.percentual_atingimento.toFixed(1)}%</td>
                 </tr>
               ))}

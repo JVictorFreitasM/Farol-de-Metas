@@ -7,7 +7,8 @@ export function dashboardSetor(setorId: string | undefined, ano: number, periodo
   return apiFetch<DashboardResumo>(`/relatorios/dashboard?${query.toString()}`);
 }
 
-export function comparativaSetores(ano: number, periodo: string) {
+export function comparativaSetores(ano: number, periodo: string, mes?: string) {
   const query = new URLSearchParams({ ano: String(ano), periodo });
+  if (mes) query.set("mes", mes);
   return apiFetch<ComparativaResponse>(`/relatorios/comparativa?${query.toString()}`);
 }

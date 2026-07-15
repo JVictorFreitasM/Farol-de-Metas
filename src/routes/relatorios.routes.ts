@@ -106,11 +106,13 @@ relatoriosRouter.get("/dashboard", async (req, res, next) => {
 const comparativaQuerySchema = z.object({
   ano: z.coerce.number().int(),
   periodo: z.enum(["mes", "trim", "semestre", "ano"]).default("ano"),
+  mes: z.enum(MESES.map((mes) => mes.toLowerCase()) as [string, ...string[]]).optional(),
 });
 
 relatoriosRouter.get("/comparativa", authorize("gerente", "admin"), async (req, res, next) => {
   try {
     const query = comparativaQuerySchema.parse(req.query);
+    const mesKey = query.mes ? MESES.find((mes) => mes.toLowerCase() === query.mes) : undefined;
 
     const setores = await prisma.setor.findMany({ where: { ativo: true } });
     const resultado = [];
@@ -121,11 +123,23 @@ relatoriosRouter.get("/comparativa", authorize("gerente", "admin"), async (req, 
       const statusOk = ivs.filter((m) => m.statusAcum === "ok").length;
       const percentual = totalIndicadores > 0 ? (statusOk / totalIndicadores) * 100 : 0;
 
+      let consolidacaoGeral: { percentual_preenchido: number; completo: boolean } | null = null;
+      if (mesKey) {
+        const realCampo = `real${mesKey}` as keyof Meta;
+        const preenchidas = ivs.filter((m) => m[realCampo] != null).length;
+        const percentualPreenchido = totalIndicadores > 0 ? (preenchidas / totalIndicadores) * 100 : 0;
+        consolidacaoGeral = {
+          percentual_preenchido: Number(percentualPreenchido.toFixed(2)),
+          completo: totalIndicadores > 0 && preenchidas === totalIndicadores,
+        };
+      }
+
       resultado.push({
         nome_setor: setor.nome,
         total_indicadores: totalIndicadores,
         status_ok: statusOk,
         percentual_atingimento: Number(percentual.toFixed(2)),
+        consolidacao_geral: consolidacaoGeral,
       });
     }
 
