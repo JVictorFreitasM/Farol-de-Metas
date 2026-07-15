@@ -434,6 +434,33 @@ td.editing input {
 .metas-pendentes-lista li {
   margin-bottom: 4px;
 }
+.card-setor-expandivel {
+  min-width: 260px;
+}
+.card-setor-clicavel {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.card-setor-detalhes {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--border);
+}
+.card-setor-secao {
+  margin-bottom: 12px;
+}
+.card-setor-secao strong {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+.texto-diferenca {
+  color: var(--nok);
+  font-weight: 600;
+}
 
 /* Indicadores agrupados por produto, com hierarquia IC (destaque) / IV (subordinado) */
 .produtos-wrapper {

@@ -21,7 +21,7 @@ async function main() {
   });
 
   await prisma.usuario.upsert({
-    where: { email: "gerente@company.com" },
+    where: { email: "a  gerente@company.com" },
     update: {},
     create: {
       email: "gerente@company.com",

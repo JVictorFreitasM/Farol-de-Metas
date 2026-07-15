@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { toast } from "react-toastify";
 import { AppLayout } from "../components/AppLayout";
@@ -9,8 +9,8 @@ import { useAuth } from "../hooks/useAuth";
 import { gerarOpcoesAno, useAnoSelecionado } from "../hooks/useAnoSelecionado";
 import { useSetorSelecionado } from "../hooks/useSetorSelecionado";
 import { comparativaSetores, dashboardSetor } from "../services/relatoriosService";
-import { listarSetores } from "../services/metasService";
-import { ComparativaSetor, DashboardResumo, MESES, MESES_LABEL, Mes, Setor } from "../types";
+import { listarMetas, listarSetores } from "../services/metasService";
+import { ComparativaSetor, DashboardResumo, Meta, MESES, MESES_LABEL, Mes, Setor } from "../types";
 
 export function DashboardPage() {
   const { usuario } = useAuth();
@@ -20,8 +20,10 @@ export function DashboardPage() {
   const [setores, setSetores] = useState<Setor[]>([]);
   const [setorId, setSetorId] = useSetorSelecionado();
   const [dados, setDados] = useState<DashboardResumo | null>(null);
+  const [metasSetor, setMetasSetor] = useState<Meta[]>([]);
   const [ranking, setRanking] = useState<ComparativaSetor[]>([]);
   const [setorExpandido, setSetorExpandido] = useState<string | null>(null);
+  const [cardSetorExpandido, setCardSetorExpandido] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -30,6 +32,14 @@ export function DashboardPage() {
       .then(setSetores)
       .catch((err) => toast.error(err.message));
   }, [isGerente]);
+
+  // Admin/gerente sem setor fixo: escolhe o primeiro setor disponível se nenhum estiver selecionado.
+  useEffect(() => {
+    if (!setorId && setores.length > 0) {
+      setSetorId(setores[0].id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [setores]);
 
   useEffect(() => {
     if (isGerente) {
@@ -43,18 +53,45 @@ export function DashboardPage() {
     let ativo = true;
     if (!setorId) {
       setDados(null);
+      setMetasSetor([]);
       setLoading(false);
       return;
     }
     setLoading(true);
-    dashboardSetor(setorId, ano, "ano")
-      .then((d) => ativo && setDados(d))
+    Promise.all([dashboardSetor(setorId, ano, "ano"), listarMetas({ setor_id: setorId, ano })])
+      .then(([d, m]) => {
+        if (!ativo) return;
+        setDados(d);
+        setMetasSetor(m.data);
+      })
       .catch((err) => toast.error(err.message))
       .finally(() => ativo && setLoading(false));
     return () => {
       ativo = false;
     };
   }, [ano, setorId]);
+
+  const { metasPendentes, metasNaoBatidas, consolidacao } = useMemo(() => {
+    const ivs = metasSetor.filter((m) => m.ic_iv === "IV" && m.ativo);
+    const pendentes = ivs
+      .filter((m) => m.meses[mes].real === null)
+      .map((m) => ({ id: m.id, indicador: m.indicador, responsavel: m.responsavel }));
+    const naoBatidas = ivs
+      .filter((m) => m.meses[mes].real !== null && m.meses[mes].status === "nok")
+      .map((m) => {
+        const meta = Number(m.meses[mes].meta);
+        const real = Number(m.meses[mes].real);
+        const percentual = meta ? (real / meta) * 100 : 0;
+        return { id: m.id, indicador: m.indicador, responsavel: m.responsavel, percentual };
+      });
+    const total = ivs.length;
+    const percentual = total > 0 ? ((total - pendentes.length) / total) * 100 : 0;
+    return {
+      metasPendentes: pendentes,
+      metasNaoBatidas: naoBatidas,
+      consolidacao: { percentual, completo: total > 0 && pendentes.length === 0 },
+    };
+  }, [metasSetor, mes]);
 
   return (
     <AppLayout titulo={`Dashboard > ${ano}`}>
@@ -75,17 +112,6 @@ export function DashboardPage() {
             ))}
           </select>
         </label>
-        {isGerente && (
-          <label>
-            Setor
-            <select value={setorId ?? ""} onChange={(e) => setSetorId(e.target.value || undefined)}>
-              <option value="">Selecione um setor...</option>
-              {setores.map((s) => (
-                <option key={s.id} value={s.id}>{s.nome}</option>
-              ))}
-            </select>
-          </label>
-        )}
       </div>
 
       {isGerente && ranking.length > 0 && (
@@ -143,11 +169,19 @@ export function DashboardPage() {
       )}
 
       {loading && <p>Carregando...</p>}
-      {!loading && isGerente && !setorId && <p>Selecione um setor acima para ver o detalhamento.</p>}
+      {!loading && isGerente && !setorId && <p>Nenhum setor disponível.</p>}
 
       {dados && (
         <>
-          <DashboardCards dados={dados} />
+          <DashboardCards
+            dados={dados}
+            mes={mes}
+            metasPendentes={metasPendentes}
+            metasNaoBatidas={metasNaoBatidas}
+            consolidacao={consolidacao}
+            expandido={cardSetorExpandido}
+            onToggleExpandir={() => setCardSetorExpandido((v) => !v)}
+          />
 
           <MetasNaoPreenchidas metas={dados.metas_incompletas} />
 

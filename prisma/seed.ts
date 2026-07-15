@@ -52,6 +52,117 @@ async function calcularAcumulado(m: typeof metasSeed[0]) {
   }
 }
 
+const MESES_CAP = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'] as const
+
+/** Cria um setor de demonstração com 1 IC + 4 IVs configurados para o mês atual:
+ * exatamente 1 dos 4 indicadores com "real" preenchido no mês atual (consolidação = 25%),
+ * sendo esse único preenchido uma meta não batida — as outras 3 aparecem como pendentes. */
+async function seedVendasDemo() {
+  const hoje = new Date()
+  const anoAtual = hoje.getFullYear()
+  const mesAtualIdx = hoje.getMonth() // 0 = Jan
+  const mesAtual = MESES_CAP[mesAtualIdx]
+  const mesAnterior = mesAtualIdx > 0 ? MESES_CAP[mesAtualIdx - 1] : undefined
+
+  const setor = await prisma.setor.upsert({
+    where: { nome: 'Vendas Demo' },
+    update: {},
+    create: { nome: 'Vendas Demo', email: 'vendas.demo@company.com' },
+  })
+
+  const senhaHash = await bcrypt.hash('VendasDemo@2025', 12)
+  const gerenteDemo = await prisma.usuario.upsert({
+    where: { email: 'gerente.demo@farol.com' },
+    update: {},
+    create: { email: 'gerente.demo@farol.com', nome: 'Gerente Vendas Demo', senhaHash, role: 'gerente', setorId: setor.id },
+  })
+
+  const icExistente = await prisma.meta.findFirst({
+    where: { setorId: setor.id, ano: anoAtual, icIv: 'IC', indicador: 'Resultados do Mês' },
+  })
+  if (icExistente) {
+    console.log('   ↷ Vendas Demo já possui dados de demonstração para este ano, pulando.')
+    return
+  }
+
+  function acumular(meta1: number | undefined, meta2: number | undefined, real1: number | undefined, real2: number | undefined) {
+    const metas = [meta1, meta2].filter((v): v is number => v != null)
+    const reais = [real1, real2].filter((v): v is number => v != null)
+    return {
+      acumMeta: metas.length ? metas.reduce((a, b) => a + b, 0) : undefined,
+      acumReal: reais.length ? reais.reduce((a, b) => a + b, 0) : undefined,
+    }
+  }
+
+  const ic = await prisma.meta.create({
+    data: {
+      setorId: setor.id,
+      ano: anoAtual,
+      ordem: 0,
+      icIv: 'IC',
+      indicador: 'Resultados do Mês',
+      responsavel: 'Gerente Vendas Demo',
+      unidade: 'UN',
+      tipoMeta: 'maior_melhor',
+      agregaFilhos: false,
+      tipoAcumulado: 'soma',
+    },
+  })
+
+  interface DadoIv {
+    indicador: string
+    unidade: string
+    metaAnteriorVal?: number
+    realAnteriorVal?: number
+    metaAtualVal?: number
+    realAtualVal?: number
+  }
+
+  // Apenas "Ticket Médio" tem real preenchido no mês atual (1 de 4 = 25% consolidação),
+  // e está abaixo da meta (não batida). As demais 3 ficam pendentes no mês atual.
+  const ivs: DadoIv[] = [
+    { indicador: 'Vendas Totais', unidade: 'R$', metaAnteriorVal: 50000, realAnteriorVal: 50000, metaAtualVal: 55000, realAtualVal: undefined },
+    { indicador: 'Ticket Médio', unidade: 'R$', metaAnteriorVal: 600, realAnteriorVal: 500, metaAtualVal: 600, realAtualVal: 400 },
+    { indicador: 'Taxa de Conversão', unidade: '%', metaAnteriorVal: 100, realAnteriorVal: 95, metaAtualVal: 100, realAtualVal: undefined },
+    { indicador: 'NPS', unidade: 'nº', metaAnteriorVal: 80, realAnteriorVal: undefined, metaAtualVal: 80, realAtualVal: undefined },
+  ]
+
+  for (let i = 0; i < ivs.length; i++) {
+    const iv = ivs[i]
+    const mesesData: Record<string, number | undefined> = {}
+    if (mesAnterior) {
+      mesesData[`meta${mesAnterior}`] = iv.metaAnteriorVal
+      mesesData[`real${mesAnterior}`] = iv.realAnteriorVal
+    }
+    mesesData[`meta${mesAtual}`] = iv.metaAtualVal
+    mesesData[`real${mesAtual}`] = iv.realAtualVal
+
+    const { acumMeta, acumReal } = acumular(iv.metaAnteriorVal, iv.metaAtualVal, iv.realAnteriorVal, iv.realAtualVal)
+
+    await prisma.meta.create({
+      data: {
+        setorId: setor.id,
+        ano: anoAtual,
+        ordem: i + 1,
+        icIv: 'IV',
+        paiId: ic.id,
+        indicador: iv.indicador,
+        responsavel: 'Gerente Vendas Demo',
+        unidade: iv.unidade,
+        tipoMeta: 'maior_melhor',
+        agregaFilhos: false,
+        tipoAcumulado: 'soma',
+        ...mesesData,
+        acumMeta,
+        acumReal,
+      },
+    })
+    console.log(`   ✓ IV "${iv.indicador}" (${mesAtual}: ${iv.realAtualVal ?? 'pendente'})`)
+  }
+
+  console.log(`   ✓ Setor "Vendas Demo" (gerente: ${gerenteDemo.email} / VendasDemo@2025)`)
+}
+
 async function main() {
   console.log('🌱 Iniciando seed...\n')
 
@@ -234,6 +345,10 @@ async function main() {
     idsPorIdx.push(criado.id)
     console.log(`      ✓ IV [${i}] ${m.indicador}`)
   }
+
+  // 4. Setor de demonstração com metas pendentes/não batidas (mês atual)
+  console.log('\n🎯 Criando dados de demonstração (Vendas Demo)...')
+  await seedVendasDemo()
 
   console.log('\n✅ Seed concluído!')
   console.log(`   ${metasSeed.filter(m => m.ic_iv === 'IC').length} ICs + ${metasSeed.filter(m => m.ic_iv === 'IV').length} IVs`)
