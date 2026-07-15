@@ -217,29 +217,51 @@ body {
 
 .filtros {
   display: flex;
+  align-items: center;
   gap: 16px;
   flex-wrap: wrap;
+  min-height: 32px;
 }
 .filtros label {
   display: flex;
-  flex-direction: column;
-  font-size: 12px;
-  color: var(--text-muted);
-  gap: 2px;
-}
-.filtros label.form-checkbox {
   flex-direction: row;
   align-items: center;
+  gap: 6px;
+  font-size: 0.875rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.filtros label.form-checkbox {
   gap: 6px;
 }
 .filtros select,
 .filtros input {
-  padding: 12px 10px;
-  font-size: 14px;
-  border-radius: 6px;
+  height: 32px;
+  padding: 0 10px;
+  font-size: 0.875rem;
+  border-radius: 4px;
   border: 1px solid var(--border);
   background: var(--bg);
   color: var(--text);
+  box-sizing: border-box;
+}
+.filtros input[type="checkbox"] {
+  height: 16px;
+  width: 16px;
+  padding: 0;
+}
+.filtros .tabs,
+.filtros .metas-toolbar {
+  margin-bottom: 0;
+}
+.filtros .btn-primary,
+.filtros .btn-secondary,
+.filtros .tabs button {
+  height: 32px;
+  padding: 0 16px;
+  display: inline-flex;
+  align-items: center;
+  box-sizing: border-box;
 }
 
 /* Cards */
