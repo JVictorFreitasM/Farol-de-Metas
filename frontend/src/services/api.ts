@@ -19,7 +19,9 @@ export async function apiFetch<T>(path: string, options: RequestInit = {}): Prom
 
   const resp = await fetch(`${API_BASE}${path}`, { ...options, headers });
 
-  if (resp.status === 401) {
+  // 401 em /auth/login é falha de credenciais, não sessão expirada — segue para o
+  // tratamento padrão abaixo, que repassa a mensagem específica vinda do backend.
+  if (resp.status === 401 && path !== "/auth/login") {
     localStorage.removeItem("auth_token");
     sessionStorage.removeItem(ANO_SESSION_KEY);
     if (window.location.pathname !== "/login") {

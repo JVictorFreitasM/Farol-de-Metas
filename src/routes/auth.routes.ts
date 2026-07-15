@@ -3,14 +3,14 @@ import { z } from "zod";
 import { prisma } from "../lib/prisma";
 import { signToken } from "../lib/jwt";
 import { verifyPassword } from "../lib/password";
-import { unauthorized } from "../lib/errors";
+import { badRequest, forbidden, unauthorized } from "../lib/errors";
 import { registrarAuditoria } from "../lib/auditoria";
 
 export const authRouter = Router();
 
 const loginSchema = z.object({
-  email: z.string().email(),
-  senha: z.string().min(1),
+  email: z.string({ required_error: "Email obrigatório" }).min(1, "Email obrigatório"),
+  senha: z.string({ required_error: "Senha obrigatória" }).min(1, "Senha obrigatória"),
 });
 
 async function registrarTentativaFalha(req: Parameters<typeof registrarAuditoria>[0], usuarioId?: string) {
@@ -27,15 +27,20 @@ authRouter.post("/login", async (req, res, next) => {
     const { email, senha } = loginSchema.parse(req.body);
 
     const usuario = await prisma.usuario.findUnique({ where: { email } });
-    if (!usuario || !usuario.ativo) {
-      await registrarTentativaFalha(req, usuario?.id);
-      throw unauthorized("Credenciais inválidas");
+    if (!usuario) {
+      await registrarTentativaFalha(req);
+      throw badRequest("Email não cadastrado");
+    }
+
+    if (!usuario.ativo) {
+      await registrarTentativaFalha(req, usuario.id);
+      throw forbidden("Usuário inativo. Contate o administrador");
     }
 
     const senhaValida = await verifyPassword(senha, usuario.senhaHash);
     if (!senhaValida) {
       await registrarTentativaFalha(req, usuario.id);
-      throw unauthorized("Credenciais inválidas");
+      throw unauthorized("Senha incorreta");
     }
 
     await prisma.usuario.update({
