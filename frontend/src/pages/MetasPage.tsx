@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
 import { AppLayout } from "../components/AppLayout";
 import { MetasMonthCards } from "../components/MetasMonthCards";
 import { MetasIndicadoresCards } from "../components/MetasIndicadoresCards";
@@ -16,7 +15,6 @@ type Aba = "tabela" | "dashboard";
 export function MetasPage() {
   const { usuario } = useAuth();
   const isGerente = usuario?.role === "admin" || usuario?.role === "gerente";
-  const podeCriar = usuario?.role === "gerente";
 
   const [ano, setAno] = useAnoSelecionado();
   const [setorId, setSetorId] = useSetorSelecionado();
@@ -125,13 +123,7 @@ export function MetasPage() {
 
   const toolbar = (
     <div className="metas-toolbar">
-      {podeCriar ? (
-        <Link className="btn-primary" to="/cadastro">+ Novo indicador (Cadastro)</Link>
-      ) : usuario?.role === "admin" ? (
-        <span className="texto-informativo">Apenas gerentes podem criar indicadores.</span>
-      ) : (
-        <span />
-      )}
+      <span />
       <button className="btn-secondary" onClick={recarregar}>↻ Atualizar</button>
     </div>
   );
