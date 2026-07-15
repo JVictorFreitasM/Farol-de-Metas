@@ -200,6 +200,39 @@ metasRouter.get("/:id/acumulado-periodo", async (req, res, next) => {
   }
 });
 
+metasRouter.get("/:id/historico", async (req, res, next) => {
+  try {
+    const usuario = req.usuario!;
+    const meta = await prisma.meta.findUnique({ where: { id: req.params.id } });
+    if (!meta) throw notFound("Meta não encontrada");
+
+    if (usuario.role !== "admin" && meta.setorId !== usuario.setorId) {
+      throw forbidden("Acesso negado a outro setor");
+    }
+
+    const historicos = await prisma.metaHistorico.findMany({
+      where: { metasId: meta.id },
+      include: { alteradoPorUsuario: true },
+      orderBy: { versao: "desc" },
+    });
+
+    res.json({
+      meta_id: meta.id,
+      indicador: meta.indicador,
+      historico: historicos.map((h) => ({
+        versao: h.versao,
+        alterado_em: h.alteradoEm,
+        alterado_por: h.alteradoPorUsuario?.nome ?? null,
+        motivo: h.motivo,
+        valores_antes: h.valoresAntes,
+        valores_depois: h.valoresDepois,
+      })),
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 const mesesSchema = z.object({
   jan: z.number().optional(),
   fev: z.number().optional(),
