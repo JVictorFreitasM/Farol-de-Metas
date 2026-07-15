@@ -11,6 +11,55 @@ import { comparativaSetores, dashboardSetor } from "../services/relatoriosServic
 import { listarMetas, listarSetores } from "../services/metasService";
 import { ComparativaSetor, DashboardResumo, Meta, MESES, MESES_LABEL, Mes, Setor } from "../types";
 
+interface NaoPreenchido {
+  id: string;
+  indicador: string;
+  responsavel: string;
+  mesesFaltando: Mes[];
+}
+interface NaoBatida {
+  id: string;
+  indicador: string;
+  responsavel: string;
+  real: number;
+  meta: number;
+  percentual: number;
+}
+type DetalheSetor =
+  | { loading: true }
+  | { loading: false; naoPreenchidos: NaoPreenchido[]; naoBatidas: NaoBatida[] };
+
+function num(valor: string | number | null): number | null {
+  if (valor === null || valor === undefined) return null;
+  const n = typeof valor === "string" ? parseFloat(valor) : valor;
+  return Number.isFinite(n) ? n : null;
+}
+
+function fmt(valor: number): string {
+  return valor.toLocaleString("pt-BR", { maximumFractionDigits: 4 });
+}
+
+function computarDetalhe(metas: Meta[], mes: Mes): { naoPreenchidos: NaoPreenchido[]; naoBatidas: NaoBatida[] } {
+  const ivs = metas.filter((m) => m.ic_iv === "IV" && m.ativo);
+  const naoPreenchidos = ivs
+    .filter((m) => m.meses[mes].real === null)
+    .map((m) => ({
+      id: m.id,
+      indicador: m.indicador,
+      responsavel: m.responsavel,
+      mesesFaltando: MESES.filter((x) => m.meses[x].real === null),
+    }));
+  const naoBatidas = ivs
+    .filter((m) => m.meses[mes].real !== null && m.meses[mes].status === "nok")
+    .map((m) => {
+      const meta = num(m.meses[mes].meta) ?? 0;
+      const real = num(m.meses[mes].real) ?? 0;
+      const percentual = meta ? (real / meta) * 100 : 0;
+      return { id: m.id, indicador: m.indicador, responsavel: m.responsavel, real, meta, percentual };
+    });
+  return { naoPreenchidos, naoBatidas };
+}
+
 export function DashboardPage() {
   const { usuario } = useAuth();
   const isGerente = usuario?.role === "gerente" || usuario?.role === "admin";
@@ -23,7 +72,7 @@ export function DashboardPage() {
   const [metasSetor, setMetasSetor] = useState<Meta[]>([]);
   const [ranking, setRanking] = useState<ComparativaSetor[]>([]);
   const [setorExpandido, setSetorExpandido] = useState<string | null>(null);
-  const [cardSetorExpandido, setCardSetorExpandido] = useState(false);
+  const [detalhes, setDetalhes] = useState<Record<string, DetalheSetor>>({});
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -49,6 +98,12 @@ export function DashboardPage() {
     }
   }, [ano, mes, isGerente]);
 
+  // Detalhe da linha depende de mês/ano — invalida o cache e recolhe ao trocar o filtro.
+  useEffect(() => {
+    setDetalhes({});
+    setSetorExpandido(null);
+  }, [ano, mes]);
+
   useEffect(() => {
     let ativo = true;
     if (!setorId) {
@@ -71,27 +126,91 @@ export function DashboardPage() {
     };
   }, [ano, setorId]);
 
-  const { metasPendentes, metasNaoBatidas, consolidacao } = useMemo(() => {
+  const consolidacao = useMemo(() => {
     const ivs = metasSetor.filter((m) => m.ic_iv === "IV" && m.ativo);
-    const pendentes = ivs
-      .filter((m) => m.meses[mes].real === null)
-      .map((m) => ({ id: m.id, indicador: m.indicador, responsavel: m.responsavel }));
-    const naoBatidas = ivs
-      .filter((m) => m.meses[mes].real !== null && m.meses[mes].status === "nok")
-      .map((m) => {
-        const meta = Number(m.meses[mes].meta);
-        const real = Number(m.meses[mes].real);
-        const percentual = meta ? (real / meta) * 100 : 0;
-        return { id: m.id, indicador: m.indicador, responsavel: m.responsavel, percentual };
-      });
+    const pendentes = ivs.filter((m) => m.meses[mes].real === null).length;
     const total = ivs.length;
-    const percentual = total > 0 ? ((total - pendentes.length) / total) * 100 : 0;
-    return {
-      metasPendentes: pendentes,
-      metasNaoBatidas: naoBatidas,
-      consolidacao: { percentual, completo: total > 0 && pendentes.length === 0 },
-    };
+    const percentual = total > 0 ? ((total - pendentes) / total) * 100 : 0;
+    return { percentual, completo: total > 0 && pendentes === 0 };
   }, [metasSetor, mes]);
+
+  const alternarLinha = (alvoSetorId: string) => {
+    const jaAberto = setorExpandido === alvoSetorId;
+    setSetorExpandido(jaAberto ? null : alvoSetorId);
+    if (podeTrocarSetor) setSetorId(alvoSetorId);
+    if (!jaAberto && !detalhes[alvoSetorId]) {
+      setDetalhes((prev) => ({ ...prev, [alvoSetorId]: { loading: true } }));
+      listarMetas({ setor_id: alvoSetorId, ano })
+        .then((r) => setDetalhes((prev) => ({ ...prev, [alvoSetorId]: { loading: false, ...computarDetalhe(r.data, mes) } })))
+        .catch(() => setDetalhes((prev) => ({ ...prev, [alvoSetorId]: { loading: false, naoPreenchidos: [], naoBatidas: [] } })));
+    }
+  };
+
+  const renderDetalhe = (detalhe: DetalheSetor | undefined) => {
+    if (!detalhe) return null;
+    if (detalhe.loading) return <p className="texto-informativo">Carregando...</p>;
+    return (
+      <>
+        <div className="setor-detalhe-secao">
+          <div className="setor-detalhe-titulo">Indicadores não preenchidos ({MESES_LABEL[mes]})</div>
+          {detalhe.naoPreenchidos.length === 0 ? (
+            <p className="texto-informativo">✓ Todos os indicadores foram preenchidos este mês.</p>
+          ) : (
+            <ul className="setor-detalhe-lista">
+              {detalhe.naoPreenchidos.map((m) => (
+                <li key={m.id}>
+                  <strong>{m.indicador}</strong> — {m.responsavel}
+                  <div className="setor-detalhe-meses">
+                    Faltam: {m.mesesFaltando.map((x) => MESES_LABEL[x]).join(", ")}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        <div className="setor-detalhe-secao">
+          <div className="setor-detalhe-titulo">Metas não batidas ({MESES_LABEL[mes]})</div>
+          {detalhe.naoBatidas.length === 0 ? (
+            <p className="texto-informativo">✓ Todas as metas foram atingidas neste mês.</p>
+          ) : (
+            <ul className="setor-detalhe-lista">
+              {detalhe.naoBatidas.map((m) => {
+                const nivel = m.percentual < 75 ? "nok" : m.percentual > 100 ? "ok" : "warn";
+                const icone = nivel === "nok" ? "❌" : nivel === "ok" ? "✓" : "⚠️";
+                return (
+                  <li key={m.id}>
+                    <strong>{m.indicador}</strong> — {m.responsavel}
+                    <div className="setor-detalhe-valores">
+                      Real: {fmt(m.real)} | Meta: {fmt(m.meta)} | Atingimento:{" "}
+                      <span className={`setor-detalhe-atingimento nivel-${nivel}`}>
+                        {m.percentual.toFixed(0)}% {icone}
+                      </span>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+
+        <div className="setor-detalhe-acoes">
+          <Link className="btn-secondary" to="/metas" onClick={(e) => e.stopPropagation()}>
+            Editar
+          </Link>
+          <button
+            className="btn-secondary"
+            onClick={(e) => {
+              e.stopPropagation();
+              setSetorExpandido(null);
+            }}
+          >
+            Voltar
+          </button>
+        </div>
+      </>
+    );
+  };
 
   return (
     <AppLayout titulo={`Dashboard > ${ano}`}>
@@ -132,13 +251,14 @@ export function DashboardPage() {
                 <Fragment key={s.setor_id}>
                   <tr
                     className={`ranking-row-clicavel ${s.setor_id === setorId ? "ranking-row-ativa" : ""}`}
-                    onClick={() => {
-                      setSetorExpandido(setorExpandido === s.setor_id ? null : s.setor_id);
-                      if (podeTrocarSetor) setSetorId(s.setor_id);
-                    }}
+                    onClick={() => alternarLinha(s.setor_id)}
                   >
                     <td>{s.ranking}</td>
-                    <td>{s.nome_setor}{podeTrocarSetor && s.setor_id === setorId ? " ✓" : ""}</td>
+                    <td>
+                      <span className={`chevron ${setorExpandido === s.setor_id ? "expanded" : ""}`}>▼</span>{" "}
+                      {s.nome_setor}
+                      {podeTrocarSetor && s.setor_id === setorId ? " ✓" : ""}
+                    </td>
                     <td>
                       {s.consolidacao_geral && (
                         <span title={`${s.consolidacao_geral.percentual_preenchido.toFixed(0)}% preenchido em ${MESES_LABEL[mes]}`}>
@@ -150,20 +270,15 @@ export function DashboardPage() {
                     <td>{s.metas_pendentes.length > 0 ? `${s.metas_pendentes.length} pendentes` : "—"}</td>
                     <td>{s.percentual_atingimento.toFixed(1)}%</td>
                   </tr>
-                  {setorExpandido === s.setor_id && s.metas_pendentes.length > 0 && (
-                    <tr>
-                      <td colSpan={5}>
-                        <ul className="metas-pendentes-lista">
-                          {s.metas_pendentes.map((m) => (
-                            <li key={m.id}>
-                              <strong>{m.indicador}</strong> ({m.ic_iv}) — {m.responsavel}{" "}
-                              <Link to="/metas">Editar</Link>
-                            </li>
-                          ))}
-                        </ul>
-                      </td>
-                    </tr>
-                  )}
+                  <tr className="setor-detalhe-row">
+                    <td className="setor-detalhe-cell" colSpan={5}>
+                      <div className={`colapsavel setor-detalhe-colapsavel ${setorExpandido === s.setor_id ? "" : "colapsado"}`}>
+                        <div>
+                          <div className="setor-detalhe">{renderDetalhe(detalhes[s.setor_id])}</div>
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
                 </Fragment>
               ))}
             </tbody>
@@ -176,15 +291,7 @@ export function DashboardPage() {
 
       {dados && (
         <>
-          <DashboardCards
-            dados={dados}
-            mes={mes}
-            metasPendentes={metasPendentes}
-            metasNaoBatidas={metasNaoBatidas}
-            consolidacao={consolidacao}
-            expandido={cardSetorExpandido}
-            onToggleExpandir={() => setCardSetorExpandido((v) => !v)}
-          />
+          <DashboardCards dados={dados} mes={mes} consolidacao={consolidacao} />
 
           <div className="charts-row">
             <div className="card">
