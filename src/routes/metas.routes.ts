@@ -487,7 +487,7 @@ const editarRealSchema = z.object({
   real: mesesSchema,
 });
 
-metasRouter.put("/:id/real", authorize("responsavel"), async (req, res, next) => {
+metasRouter.put("/:id/real", authorize("responsavel", "gerente", "admin"), async (req, res, next) => {
   try {
     const body = editarRealSchema.parse(req.body);
     const usuario = req.usuario!;
@@ -495,7 +495,7 @@ metasRouter.put("/:id/real", authorize("responsavel"), async (req, res, next) =>
     const metaAtual = await prisma.meta.findUnique({ where: { id: req.params.id } });
     if (!metaAtual) throw notFound("Meta não encontrada");
 
-    if (metaAtual.setorId !== usuario.setorId) {
+    if (usuario.role !== "admin" && metaAtual.setorId !== usuario.setorId) {
       throw forbidden("Acesso negado a outro setor");
     }
 
