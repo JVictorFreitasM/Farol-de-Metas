@@ -743,6 +743,25 @@ td.editing input {
 .indicador-row-periodo .indicador-row-valor-numero {
   font-size: 14px;
 }
+.legenda-cores-atingimento {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: var(--text-muted);
+  margin: 8px 0;
+}
+.legenda-cores-atingimento span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.legenda-cor {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
 .indicador-row-input {
   width: 70px;
   height: 28px;

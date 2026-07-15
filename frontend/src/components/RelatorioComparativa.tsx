@@ -1,5 +1,19 @@
-import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { ComparativaSetor } from "../types";
+
+const CORES_ATINGIMENTO = {
+  verde: "#4CAF50",
+  amarelo: "#FFC107",
+  laranja: "#FF9800",
+  vermelho: "#F44336",
+};
+
+function corPorAtingimento(percentual: number): string {
+  if (percentual > 75) return CORES_ATINGIMENTO.verde;
+  if (percentual >= 50) return CORES_ATINGIMENTO.amarelo;
+  if (percentual >= 25) return CORES_ATINGIMENTO.laranja;
+  return CORES_ATINGIMENTO.vermelho;
+}
 
 export function RelatorioComparativa({ setores }: { setores: ComparativaSetor[] }) {
   if (setores.length === 0) return <p>Sem dados para o período.</p>;
@@ -12,13 +26,24 @@ export function RelatorioComparativa({ setores }: { setores: ComparativaSetor[] 
         🥇 Melhor setor: {melhor.nome_setor} ({melhor.percentual_atingimento.toFixed(0)}%)
       </div>
 
+      <div className="legenda-cores-atingimento">
+        <span><span className="legenda-cor" style={{ background: CORES_ATINGIMENTO.verde }} /> &gt; 75%</span>
+        <span><span className="legenda-cor" style={{ background: CORES_ATINGIMENTO.amarelo }} /> 50–74%</span>
+        <span><span className="legenda-cor" style={{ background: CORES_ATINGIMENTO.laranja }} /> 25–49%</span>
+        <span><span className="legenda-cor" style={{ background: CORES_ATINGIMENTO.vermelho }} /> &lt; 25%</span>
+      </div>
+
       <ResponsiveContainer width="100%" height={Math.max(240, setores.length * 40)}>
         <BarChart data={setores} layout="vertical" margin={{ left: 40 }}>
           <CartesianGrid strokeDasharray="3 3" />
           <XAxis type="number" domain={[0, 100]} />
           <YAxis type="category" dataKey="nome_setor" width={140} />
           <Tooltip />
-          <Bar dataKey="percentual_atingimento" fill="#3b82f6" name="% Atingimento" />
+          <Bar dataKey="percentual_atingimento" name="% Atingimento">
+            {setores.map((s) => (
+              <Cell key={s.nome_setor} fill={corPorAtingimento(s.percentual_atingimento)} />
+            ))}
+          </Bar>
         </BarChart>
       </ResponsiveContainer>
 
