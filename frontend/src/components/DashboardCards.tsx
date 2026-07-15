@@ -48,7 +48,7 @@ export function DashboardCards({
     <div className="cards-row">
       <div className="card card-setor-expandivel" ref={cardRef}>
         <div
-          className="card-title card-setor-clicavel"
+          className="card-setor-clicavel"
           role="button"
           tabIndex={0}
           aria-expanded={expandido}
@@ -60,14 +60,16 @@ export function DashboardCards({
             }
           }}
         >
-          <span className={`chevron ${expandido ? "expanded" : ""}`}>▼</span> 📊 Setor
-        </div>
-        <div className="card-value">
-          {dados.setor}{" "}
-          <span
-            className={`status-dot ${consolidacao.completo ? "status-dot-ok" : "status-dot-nok"}`}
-            title={`${consolidacao.percentual.toFixed(0)}% preenchido em ${MESES_LABEL[mes]}`}
-          />
+          <div className="card-title">
+            <span className={`chevron ${expandido ? "expanded" : ""}`}>▼</span> 📊 Setor
+          </div>
+          <div className="card-value">
+            {dados.setor}{" "}
+            <span
+              className={`status-dot ${consolidacao.completo ? "status-dot-ok" : "status-dot-nok"}`}
+              title={`${consolidacao.percentual.toFixed(0)}% preenchido em ${MESES_LABEL[mes]}`}
+            />
+          </div>
         </div>
 
         {expandido && (

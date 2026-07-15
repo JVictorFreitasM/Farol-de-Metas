@@ -1,4 +1,5 @@
 import { ANO_SESSION_KEY } from "../hooks/useAnoSelecionado";
+import { SETOR_SESSION_KEY } from "../hooks/sessionKeys";
 
 const API_BASE = "/api";
 
@@ -24,6 +25,7 @@ export async function apiFetch<T>(path: string, options: RequestInit = {}): Prom
   if (resp.status === 401 && path !== "/auth/login") {
     localStorage.removeItem("auth_token");
     sessionStorage.removeItem(ANO_SESSION_KEY);
+    sessionStorage.removeItem(SETOR_SESSION_KEY);
     if (window.location.pathname !== "/login") {
       window.location.href = "/login";
     }

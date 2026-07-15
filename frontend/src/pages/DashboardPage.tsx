@@ -15,6 +15,7 @@ import { ComparativaSetor, DashboardResumo, Meta, MESES, MESES_LABEL, Mes, Setor
 export function DashboardPage() {
   const { usuario } = useAuth();
   const isGerente = usuario?.role === "gerente" || usuario?.role === "admin";
+  const podeTrocarSetor = usuario?.role === "admin" || (usuario?.role === "gerente" && !usuario.setor_id);
   const [ano, setAno] = useAnoSelecionado();
   const [mes, setMes] = useState<Mes>(MESES[new Date().getMonth()]);
   const [setores, setSetores] = useState<Setor[]>([]);
@@ -131,11 +132,14 @@ export function DashboardPage() {
               {ranking.map((s) => (
                 <Fragment key={s.setor_id}>
                   <tr
-                    className="ranking-row-clicavel"
-                    onClick={() => setSetorExpandido(setorExpandido === s.setor_id ? null : s.setor_id)}
+                    className={`ranking-row-clicavel ${s.setor_id === setorId ? "ranking-row-ativa" : ""}`}
+                    onClick={() => {
+                      setSetorExpandido(setorExpandido === s.setor_id ? null : s.setor_id);
+                      if (podeTrocarSetor) setSetorId(s.setor_id);
+                    }}
                   >
                     <td>{s.ranking}</td>
-                    <td>{s.nome_setor}</td>
+                    <td>{s.nome_setor}{podeTrocarSetor && s.setor_id === setorId ? " ✓" : ""}</td>
                     <td>
                       {s.consolidacao_geral && (
                         <span title={`${s.consolidacao_geral.percentual_preenchido.toFixed(0)}% preenchido em ${MESES_LABEL[mes]}`}>

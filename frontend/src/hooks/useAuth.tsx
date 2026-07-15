@@ -1,6 +1,7 @@
 import { createContext, ReactNode, useContext, useEffect, useState } from "react";
 import { login as loginRequest } from "../services/authService";
 import { ANO_SESSION_KEY } from "./useAnoSelecionado";
+import { SETOR_SESSION_KEY } from "./sessionKeys";
 import { Usuario } from "../types";
 
 interface AuthContextValue {
@@ -53,6 +54,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = () => {
     localStorage.removeItem("auth_token");
     sessionStorage.removeItem(ANO_SESSION_KEY);
+    sessionStorage.removeItem(SETOR_SESSION_KEY);
     setUsuario(null);
     window.location.href = "/login";
   };

@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { useAuth } from "./useAuth";
-
-export const SETOR_SESSION_KEY = "farol_setor_selecionado";
+import { SETOR_SESSION_KEY } from "./sessionKeys";
 
 /** Setor selecionado nas telas de Metas/Dashboard.
  * Responsável e gerente com setor fixo usam sempre o próprio setor

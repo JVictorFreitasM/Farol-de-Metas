@@ -427,6 +427,10 @@ td.editing input {
 .ranking-row-clicavel:hover {
   background: var(--bg-hover, rgba(0, 0, 0, 0.04));
 }
+.ranking-row-ativa {
+  background: color-mix(in srgb, var(--primary) 10%, transparent);
+  font-weight: 600;
+}
 .metas-pendentes-lista {
   margin: 8px 0;
   padding-left: 20px;
@@ -439,6 +443,8 @@ td.editing input {
 }
 .card-setor-clicavel {
   cursor: pointer;
+}
+.card-setor-clicavel .card-title {
   display: flex;
   align-items: center;
   gap: 6px;
