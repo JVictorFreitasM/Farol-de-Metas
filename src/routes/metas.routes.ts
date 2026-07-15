@@ -233,6 +233,56 @@ metasRouter.get("/:id/historico", async (req, res, next) => {
   }
 });
 
+const historicoPeriodoQuerySchema = z.object({
+  ano: z.coerce.number().int(),
+});
+
+metasRouter.get("/:id/historico-periodo", async (req, res, next) => {
+  try {
+    const usuario = req.usuario!;
+    const query = historicoPeriodoQuerySchema.parse(req.query);
+
+    const meta = await prisma.meta.findUnique({ where: { id: req.params.id } });
+    if (!meta) throw notFound("Meta não encontrada");
+
+    if (usuario.role !== "admin" && meta.setorId !== usuario.setorId) {
+      throw forbidden("Acesso negado a outro setor");
+    }
+
+    const inicioAno = new Date(Date.UTC(query.ano, 0, 1));
+    const fimAno = new Date(Date.UTC(query.ano + 1, 0, 1));
+
+    const historicos = await prisma.metaHistorico.findMany({
+      where: { metasId: meta.id, alteradoEm: { gte: inicioAno, lt: fimAno } },
+      orderBy: { alteradoEm: "asc" },
+    });
+
+    const versoes = historicos.map((h) => {
+      const depois = h.valoresDepois as Record<string, unknown>;
+      const meses = MESES.map((mes) => ({
+        mes: mes.toLowerCase(),
+        meta: depois[`meta${mes}`] ?? null,
+        real: depois[`real${mes}`] ?? null,
+        status: depois[`status${mes}`] ?? null,
+      }));
+      return {
+        versao: h.versao,
+        data_alteracao: h.alteradoEm,
+        meses,
+      };
+    });
+
+    res.json({
+      meta_id: meta.id,
+      indicador: meta.indicador,
+      ano: query.ano,
+      versoes,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 const mesesSchema = z.object({
   jan: z.number().optional(),
   fev: z.number().optional(),
