@@ -732,6 +732,15 @@ td.editing input {
   color: var(--text-muted);
   cursor: not-allowed;
 }
+.indicador-row-periodo {
+  flex: 0 0 130px;
+  border-right: 1px dashed var(--border);
+  margin-right: 8px;
+  padding-right: 8px;
+}
+.indicador-row-periodo .indicador-row-valor-numero {
+  font-size: 14px;
+}
 .indicador-row-input {
   width: 70px;
   height: 28px;

@@ -7,6 +7,7 @@ import { CriarMetaModal } from "../components/CriarMetaModal";
 import { useAuth } from "../hooks/useAuth";
 import { useMetas } from "../hooks/useMetas";
 import { gerarOpcoesAno, useAnoSelecionado } from "../hooks/useAnoSelecionado";
+import { AcumuladoPeriodoResponse, obterAcumuladoPeriodo } from "../services/metasService";
 import { MESES, MESES_LABEL, Mes } from "../types";
 
 type Aba = "tabela" | "dashboard";
@@ -25,12 +26,40 @@ export function MetasPage() {
   const [mesSelecionado, setMesSelecionado] = useState<Mes>(() => MESES[new Date().getMonth()]);
   const [mesEscolhidoManualmente, setMesEscolhidoManualmente] = useState(false);
   const [mostrarInativos, setMostrarInativos] = useState(false);
+  const [periodoInicio, setPeriodoInicio] = useState<Mes | "">("");
+  const [periodoFim, setPeriodoFim] = useState<Mes | "">("");
+  const [acumuladosPeriodo, setAcumuladosPeriodo] = useState<Record<string, AcumuladoPeriodoResponse>>({});
 
   const { metas, setores, loading, recarregar, salvarReal, salvarMetaManual, criar, deletar, inativar, ativar } = useMetas({
     ano,
     setor_id: setorId,
     incluir_inativos: mostrarInativos,
   });
+
+  useEffect(() => {
+    if (!periodoInicio || !periodoFim || metas.length === 0) {
+      setAcumuladosPeriodo({});
+      return;
+    }
+    let ativo = true;
+    Promise.all(
+      metas.map((m) =>
+        obterAcumuladoPeriodo(m.id, periodoInicio, periodoFim)
+          .then((r) => [m.id, r] as const)
+          .catch(() => null)
+      )
+    ).then((resultados) => {
+      if (!ativo) return;
+      const mapa: Record<string, AcumuladoPeriodoResponse> = {};
+      for (const item of resultados) {
+        if (item) mapa[item[0]] = item[1];
+      }
+      setAcumuladosPeriodo(mapa);
+    });
+    return () => {
+      ativo = false;
+    };
+  }, [periodoInicio, periodoFim, metas]);
 
   useEffect(() => {
     if (mesEscolhidoManualmente || metas.length === 0) return;
@@ -71,6 +100,24 @@ export function MetasPage() {
           Mostrar inativos
         </label>
       )}
+      <label>
+        Período de
+        <select value={periodoInicio} onChange={(e) => setPeriodoInicio((e.target.value || "") as Mes | "")}>
+          <option value="">Anual</option>
+          {MESES.map((opcao) => (
+            <option key={opcao} value={opcao}>{MESES_LABEL[opcao]}</option>
+          ))}
+        </select>
+      </label>
+      <label>
+        até
+        <select value={periodoFim} onChange={(e) => setPeriodoFim((e.target.value || "") as Mes | "")}>
+          <option value="">Anual</option>
+          {MESES.map((opcao) => (
+            <option key={opcao} value={opcao}>{MESES_LABEL[opcao]}</option>
+          ))}
+        </select>
+      </label>
       <div className="tabs">
         <button className={aba === "tabela" ? "active" : ""} onClick={() => setAba("tabela")}>Tabela</button>
         <button className={aba === "dashboard" ? "active" : ""} onClick={() => setAba("dashboard")}>Dashboard</button>
@@ -112,6 +159,7 @@ export function MetasPage() {
             mes={mesSelecionado}
             usuarioRole={usuario.role}
             usuarioSetorId={usuario.setor_id}
+            acumuladosPeriodo={periodoInicio && periodoFim ? acumuladosPeriodo : undefined}
             onSalvarReal={salvarReal}
             onSalvarMetaManual={salvarMetaManual}
             onDeletar={deletar}

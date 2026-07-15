@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { MesesBody } from "../services/metasService";
+import { AcumuladoPeriodoResponse, MesesBody } from "../services/metasService";
 import { AcumuladoTooltip } from "./AcumuladoTooltip";
 import { Meta, MESES_LABEL, Mes, Role } from "../types";
 
@@ -68,6 +68,7 @@ export function MetasIndicadoresCards({
   mes,
   usuarioRole,
   usuarioSetorId,
+  acumuladosPeriodo,
   onSalvarReal,
   onSalvarMetaManual,
   onDeletar,
@@ -78,6 +79,7 @@ export function MetasIndicadoresCards({
   mes: Mes;
   usuarioRole: Role;
   usuarioSetorId: string | null;
+  acumuladosPeriodo?: Record<string, AcumuladoPeriodoResponse>;
   onSalvarReal: (id: string, body: MesesBody) => Promise<void>;
   onSalvarMetaManual: (id: string, valor: number) => Promise<void>;
   onDeletar: (id: string) => Promise<void>;
@@ -183,6 +185,28 @@ export function MetasIndicadoresCards({
           </div>
           <div className="indicador-row-responsavel">{meta.responsavel}</div>
         </div>
+
+        {acumuladosPeriodo && (
+          <div className="indicador-row-valor indicador-row-periodo">
+            <div className="indicador-row-valor-label">
+              {acumuladosPeriodo[meta.id]
+                ? `${MESES_LABEL[acumuladosPeriodo[meta.id].periodo.mes_inicio]}–${MESES_LABEL[acumuladosPeriodo[meta.id].periodo.mes_fim]}`
+                : "Período"}
+            </div>
+            {acumuladosPeriodo[meta.id] ? (
+              <div className="indicador-row-valor-numero">
+                {formatNumber(acumuladosPeriodo[meta.id].acumulados.real)} / {formatNumber(acumuladosPeriodo[meta.id].acumulados.meta)}
+                {acumuladosPeriodo[meta.id].acumulados.status && (
+                  <span className={`badge-status ${acumuladosPeriodo[meta.id].acumulados.status}`} style={{ marginLeft: 4 }}>
+                    {acumuladosPeriodo[meta.id].acumulados.status === "ok" ? "OK" : "NOK"}
+                  </span>
+                )}
+              </div>
+            ) : (
+              <div className="indicador-row-valor-numero">-</div>
+            )}
+          </div>
+        )}
 
         <div className="indicador-row-valor">
           <div className="indicador-row-valor-label">Meta</div>
