@@ -124,22 +124,32 @@ relatoriosRouter.get("/comparativa", authorize("gerente", "admin"), async (req, 
       const percentual = totalIndicadores > 0 ? (statusOk / totalIndicadores) * 100 : 0;
 
       let consolidacaoGeral: { percentual_preenchido: number; completo: boolean } | null = null;
+      let metasPendentes: { id: string; indicador: string; ic_iv: string; responsavel: string }[] = [];
       if (mesKey) {
         const realCampo = `real${mesKey}` as keyof Meta;
-        const preenchidas = ivs.filter((m) => m[realCampo] != null).length;
+        const pendentes = ivs.filter((m) => m[realCampo] == null);
+        const preenchidas = totalIndicadores - pendentes.length;
         const percentualPreenchido = totalIndicadores > 0 ? (preenchidas / totalIndicadores) * 100 : 0;
         consolidacaoGeral = {
           percentual_preenchido: Number(percentualPreenchido.toFixed(2)),
-          completo: totalIndicadores > 0 && preenchidas === totalIndicadores,
+          completo: totalIndicadores > 0 && pendentes.length === 0,
         };
+        metasPendentes = pendentes.map((m) => ({
+          id: m.id,
+          indicador: m.indicador,
+          ic_iv: m.icIv,
+          responsavel: m.responsavel,
+        }));
       }
 
       resultado.push({
+        setor_id: setor.id,
         nome_setor: setor.nome,
         total_indicadores: totalIndicadores,
         status_ok: statusOk,
         percentual_atingimento: Number(percentual.toFixed(2)),
         consolidacao_geral: consolidacaoGeral,
+        metas_pendentes: metasPendentes,
       });
     }
 

@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { toast } from "react-toastify";
 import { AppLayout } from "../components/AppLayout";
 import { DashboardCards } from "../components/DashboardCards";
@@ -19,6 +20,7 @@ export function DashboardPage() {
   const [setorId, setSetorId] = useState<string | undefined>(usuario?.role === "responsavel" ? usuario.setor_id ?? undefined : undefined);
   const [dados, setDados] = useState<DashboardResumo | null>(null);
   const [ranking, setRanking] = useState<ComparativaSetor[]>([]);
+  const [setorExpandido, setSetorExpandido] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -94,24 +96,45 @@ export function DashboardPage() {
                 <th>#</th>
                 <th>Setor</th>
                 <th>Consolidação Geral</th>
+                <th>Pendentes</th>
                 <th>% Atingimento</th>
               </tr>
             </thead>
             <tbody>
               {ranking.map((s) => (
-                <tr key={s.nome_setor}>
-                  <td>{s.ranking}</td>
-                  <td>{s.nome_setor}</td>
-                  <td>
-                    {s.consolidacao_geral && (
-                      <span title={`${s.consolidacao_geral.percentual_preenchido.toFixed(0)}% preenchido em ${MESES_LABEL[mes]}`}>
-                        <span className={`status-dot ${s.consolidacao_geral.completo ? "status-dot-ok" : "status-dot-nok"}`} />{" "}
-                        {s.consolidacao_geral.percentual_preenchido.toFixed(0)}%
-                      </span>
-                    )}
-                  </td>
-                  <td>{s.percentual_atingimento.toFixed(1)}%</td>
-                </tr>
+                <Fragment key={s.setor_id}>
+                  <tr
+                    className="ranking-row-clicavel"
+                    onClick={() => setSetorExpandido(setorExpandido === s.setor_id ? null : s.setor_id)}
+                  >
+                    <td>{s.ranking}</td>
+                    <td>{s.nome_setor}</td>
+                    <td>
+                      {s.consolidacao_geral && (
+                        <span title={`${s.consolidacao_geral.percentual_preenchido.toFixed(0)}% preenchido em ${MESES_LABEL[mes]}`}>
+                          <span className={`status-dot ${s.consolidacao_geral.completo ? "status-dot-ok" : "status-dot-nok"}`} />{" "}
+                          {s.consolidacao_geral.percentual_preenchido.toFixed(0)}%
+                        </span>
+                      )}
+                    </td>
+                    <td>{s.metas_pendentes.length > 0 ? `${s.metas_pendentes.length} pendentes` : "—"}</td>
+                    <td>{s.percentual_atingimento.toFixed(1)}%</td>
+                  </tr>
+                  {setorExpandido === s.setor_id && s.metas_pendentes.length > 0 && (
+                    <tr>
+                      <td colSpan={5}>
+                        <ul className="metas-pendentes-lista">
+                          {s.metas_pendentes.map((m) => (
+                            <li key={m.id}>
+                              <strong>{m.indicador}</strong> ({m.ic_iv}) — {m.responsavel}{" "}
+                              <Link to="/metas">Editar</Link>
+                            </li>
+                          ))}
+                        </ul>
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
               ))}
             </tbody>
           </table>

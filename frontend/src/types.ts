@@ -137,13 +137,22 @@ export interface DashboardResumo {
   }[];
 }
 
+export interface MetaPendente {
+  id: string;
+  indicador: string;
+  ic_iv: "IC" | "IV";
+  responsavel: string;
+}
+
 export interface ComparativaSetor {
+  setor_id: string;
   nome_setor: string;
   total_indicadores: number;
   status_ok: number;
   percentual_atingimento: number;
   ranking: number;
   consolidacao_geral: { percentual_preenchido: number; completo: boolean } | null;
+  metas_pendentes: MetaPendente[];
 }
 
 export interface ComparativaResponse {
