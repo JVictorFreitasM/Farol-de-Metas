@@ -27,13 +27,14 @@ app.use(
 app.use(cors());
 app.use(express.json());
 
-// 100 requisições/minuto por usuário (chave = IP; ver OS-003 para chave por usuário autenticado)
+// 500 requisições/minuto globais (chave fixa; evita bloqueio em massa em rede corporativa com IP compartilhado)
 app.use(
   rateLimit({
     windowMs: 60 * 1000,
-    limit: 100,
+    limit: 500,
     standardHeaders: true,
     legacyHeaders: false,
+    keyGenerator: () => "global",
   })
 );
 
