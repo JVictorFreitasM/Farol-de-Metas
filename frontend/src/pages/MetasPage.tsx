@@ -26,7 +26,7 @@ export function MetasPage() {
   const [periodoFim, setPeriodoFim] = useState<Mes | "">("");
   const [acumuladosPeriodo, setAcumuladosPeriodo] = useState<Record<string, AcumuladoPeriodoResponse>>({});
 
-  const { metas, setores, loading, recarregar, salvarReal, salvarMetaManual, deletar, inativar, ativar } = useMetas({
+  const { metas, setores, loading, recarregar, salvarMeta, salvarReal, salvarMetaManual, deletar, inativar, ativar } = useMetas({
     ano,
     setor_id: setorId,
     incluir_inativos: mostrarInativos,
@@ -151,6 +151,7 @@ export function MetasPage() {
             usuarioSetorId={usuario.setor_id}
             acumuladosPeriodo={periodoInicio && periodoFim ? acumuladosPeriodo : undefined}
             onSalvarReal={salvarReal}
+            onSalvarMeta={(id, body) => salvarMeta(id, { meta: body })}
             onSalvarMetaManual={salvarMetaManual}
             onDeletar={deletar}
             onInativar={inativar}

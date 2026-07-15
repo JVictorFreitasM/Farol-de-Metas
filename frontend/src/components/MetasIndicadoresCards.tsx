@@ -77,6 +77,7 @@ export function MetasIndicadoresCards({
   usuarioSetorId,
   acumuladosPeriodo,
   onSalvarReal,
+  onSalvarMeta,
   onSalvarMetaManual,
   onDeletar,
   onInativar,
@@ -88,6 +89,7 @@ export function MetasIndicadoresCards({
   usuarioSetorId: string | null;
   acumuladosPeriodo?: Record<string, AcumuladoPeriodoResponse>;
   onSalvarReal: (id: string, body: MesesBody) => Promise<void>;
+  onSalvarMeta: (id: string, body: MesesBody) => Promise<void>;
   onSalvarMetaManual: (id: string, valor: number) => Promise<void>;
   onDeletar: (id: string) => Promise<void>;
   onInativar: (id: string, motivo?: string) => Promise<void>;
@@ -95,6 +97,8 @@ export function MetasIndicadoresCards({
 }) {
   const [editandoId, setEditandoId] = useState<string | null>(null);
   const [valorEditado, setValorEditado] = useState("");
+  const [editandoMetaId, setEditandoMetaId] = useState<string | null>(null);
+  const [valorMetaEditado, setValorMetaEditado] = useState("");
   const [confirmandoExclusao, setConfirmandoExclusao] = useState<string | null>(null);
   const [confirmandoInativacao, setConfirmandoInativacao] = useState<string | null>(null);
   const [expandido, setExpandido] = useState<Record<string, boolean>>({});
@@ -103,6 +107,7 @@ export function MetasIndicadoresCards({
   const podeInativar = usuarioRole === "gerente";
   const podeEditarReal = (meta: Meta) =>
     !meta.agrega_filhos && (isGerente || (usuarioRole === "responsavel" && usuarioSetorId === meta.setor_id));
+  const podeEditarMeta = (meta: Meta) => !meta.agrega_filhos && isGerente;
 
   const isExpandido = (chave: string): boolean => {
     if (chave in expandido) return expandido[chave];
@@ -136,6 +141,26 @@ export function MetasIndicadoresCards({
     }
   };
 
+  const iniciarEdicaoMeta = (meta: Meta) => {
+    if (!podeEditarMeta(meta)) return;
+    const valorAtual = meta.meses[mes].meta;
+    setEditandoMetaId(meta.id);
+    setValorMetaEditado(valorAtual != null ? String(valorAtual) : "");
+  };
+
+  const salvarMeta = async (meta: Meta) => {
+    const numero = parseFloat(valorMetaEditado);
+    if (Number.isNaN(numero) || (meta.tipo_meta === "maior_melhor" && numero < 0)) {
+      setEditandoMetaId(null);
+      return;
+    }
+    try {
+      await onSalvarMeta(meta.id, { [mes]: numero });
+    } finally {
+      setEditandoMetaId(null);
+    }
+  };
+
   if (metas.length === 0) {
     return <p>Nenhum indicador cadastrado para este setor.</p>;
   }
@@ -166,6 +191,8 @@ export function MetasIndicadoresCards({
   const renderLinha = (meta: Meta, opcoes?: { chevron?: React.ReactNode; contador?: number }) => {
     const editavel = podeEditarReal(meta);
     const isEditing = editandoId === meta.id;
+    const metaEditavel = podeEditarMeta(meta);
+    const isEditingMeta = editandoMetaId === meta.id;
     const status = meta.meses[mes].status;
     const isIC = meta.ic_iv === "IC";
 
@@ -233,7 +260,29 @@ export function MetasIndicadoresCards({
 
         <div className="indicador-row-valor">
           <div className="indicador-row-valor-label">Meta</div>
-          <div className="indicador-row-valor-numero">{formatNumber(meta.meses[mes].meta)}</div>
+          {isEditingMeta ? (
+            <input
+              type="number"
+              autoFocus
+              className="indicador-row-input"
+              value={valorMetaEditado}
+              min={meta.tipo_meta === "maior_melhor" ? 0 : undefined}
+              onChange={(e) => setValorMetaEditado(e.target.value)}
+              onBlur={() => salvarMeta(meta)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                if (e.key === "Escape") setEditandoMetaId(null);
+              }}
+            />
+          ) : (
+            <div
+              className={`indicador-row-valor-numero ${metaEditavel ? "editable" : "locked"}`}
+              title={meta.agrega_filhos ? "Calculado automaticamente a partir dos IVs filhos" : undefined}
+              onClick={() => iniciarEdicaoMeta(meta)}
+            >
+              {formatNumber(meta.meses[mes].meta)}
+            </div>
+          )}
         </div>
 
         <div className="indicador-row-valor">
