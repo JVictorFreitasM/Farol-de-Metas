@@ -7,6 +7,7 @@ import { StatusRoscaChart, TendenciaMensalChart } from "../components/DashboardC
 import { MetasNaoPreenchidas } from "../components/MetasNaoPreenchidas";
 import { useAuth } from "../hooks/useAuth";
 import { gerarOpcoesAno, useAnoSelecionado } from "../hooks/useAnoSelecionado";
+import { useSetorSelecionado } from "../hooks/useSetorSelecionado";
 import { comparativaSetores, dashboardSetor } from "../services/relatoriosService";
 import { listarSetores } from "../services/metasService";
 import { ComparativaSetor, DashboardResumo, MESES, MESES_LABEL, Mes, Setor } from "../types";
@@ -17,7 +18,7 @@ export function DashboardPage() {
   const [ano, setAno] = useAnoSelecionado();
   const [mes, setMes] = useState<Mes>(MESES[new Date().getMonth()]);
   const [setores, setSetores] = useState<Setor[]>([]);
-  const [setorId, setSetorId] = useState<string | undefined>(usuario?.role === "responsavel" ? usuario.setor_id ?? undefined : undefined);
+  const [setorId, setSetorId] = useSetorSelecionado();
   const [dados, setDados] = useState<DashboardResumo | null>(null);
   const [ranking, setRanking] = useState<ComparativaSetor[]>([]);
   const [setorExpandido, setSetorExpandido] = useState<string | null>(null);

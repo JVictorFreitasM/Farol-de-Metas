@@ -7,6 +7,7 @@ import { CriarMetaModal } from "../components/CriarMetaModal";
 import { useAuth } from "../hooks/useAuth";
 import { useMetas } from "../hooks/useMetas";
 import { gerarOpcoesAno, useAnoSelecionado } from "../hooks/useAnoSelecionado";
+import { useSetorSelecionado } from "../hooks/useSetorSelecionado";
 import { AcumuladoPeriodoResponse, obterAcumuladoPeriodo } from "../services/metasService";
 import { MESES, MESES_LABEL, Mes } from "../types";
 
@@ -18,9 +19,7 @@ export function MetasPage() {
   const podeCriar = usuario?.role === "gerente";
 
   const [ano, setAno] = useAnoSelecionado();
-  const [setorId, setSetorId] = useState<string | undefined>(
-    usuario?.role === "responsavel" ? usuario.setor_id ?? undefined : undefined
-  );
+  const [setorId, setSetorId] = useSetorSelecionado();
   const [aba, setAba] = useState<Aba>("tabela");
   const [modalAberto, setModalAberto] = useState(false);
   const [mesSelecionado, setMesSelecionado] = useState<Mes>(() => MESES[new Date().getMonth()]);
