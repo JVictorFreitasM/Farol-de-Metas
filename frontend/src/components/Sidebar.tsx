@@ -19,7 +19,7 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
         <div className="sidebar-section">Dados</div>
         <NavLink to="/metas" onClick={onClose}>Metas</NavLink>
         {(usuario?.role === "gerente" || usuario?.role === "admin") && (
-          <NavLink to="/produtos" onClick={onClose}>Produtos</NavLink>
+          <NavLink to="/cadastro" onClick={onClose}>Cadastro</NavLink>
         )}
 
         <div className="sidebar-section">Análise</div>

@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { AppLayout } from "../components/AppLayout";
 import { MetasMonthCards } from "../components/MetasMonthCards";
 import { MetasIndicadoresCards } from "../components/MetasIndicadoresCards";
 import { MetasDashboard } from "../components/MetasDashboard";
-import { CriarMetaModal } from "../components/CriarMetaModal";
 import { useAuth } from "../hooks/useAuth";
 import { useMetas } from "../hooks/useMetas";
 import { gerarOpcoesAno, useAnoSelecionado } from "../hooks/useAnoSelecionado";
@@ -21,7 +21,6 @@ export function MetasPage() {
   const [ano, setAno] = useAnoSelecionado();
   const [setorId, setSetorId] = useSetorSelecionado();
   const [aba, setAba] = useState<Aba>("tabela");
-  const [modalAberto, setModalAberto] = useState(false);
   const [mesSelecionado, setMesSelecionado] = useState<Mes>(() => MESES[new Date().getMonth()]);
   const [mesEscolhidoManualmente, setMesEscolhidoManualmente] = useState(false);
   const [mostrarInativos, setMostrarInativos] = useState(false);
@@ -29,7 +28,7 @@ export function MetasPage() {
   const [periodoFim, setPeriodoFim] = useState<Mes | "">("");
   const [acumuladosPeriodo, setAcumuladosPeriodo] = useState<Record<string, AcumuladoPeriodoResponse>>({});
 
-  const { metas, setores, loading, recarregar, salvarReal, salvarMetaManual, criar, deletar, inativar, ativar } = useMetas({
+  const { metas, setores, loading, recarregar, salvarReal, salvarMetaManual, deletar, inativar, ativar } = useMetas({
     ano,
     setor_id: setorId,
     incluir_inativos: mostrarInativos,
@@ -127,7 +126,7 @@ export function MetasPage() {
   const toolbar = (
     <div className="metas-toolbar">
       {podeCriar ? (
-        <button className="btn-primary" onClick={() => setModalAberto(true)}>+ Novo indicador</button>
+        <Link className="btn-primary" to="/cadastro">+ Novo indicador (Cadastro)</Link>
       ) : usuario?.role === "admin" ? (
         <span className="texto-informativo">Apenas gerentes podem criar indicadores.</span>
       ) : (
@@ -172,20 +171,6 @@ export function MetasPage() {
           {toolbar}
           <MetasDashboard metas={metas} ano={ano} />
         </>
-      )}
-
-      {modalAberto && (
-        <CriarMetaModal
-          setores={setores}
-          setorIdInicial={setorId}
-          metasExistentes={metas}
-          ano={ano}
-          onSalvar={async (body) => {
-            await criar(body);
-            setModalAberto(false);
-          }}
-          onFechar={() => setModalAberto(false)}
-        />
       )}
     </AppLayout>
   );

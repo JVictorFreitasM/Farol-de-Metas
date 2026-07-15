@@ -6,7 +6,7 @@ import { ProtectedRoute } from "./components/ProtectedRoute";
 import { LoginPage } from "./pages/LoginPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { MetasPage } from "./pages/MetasPage";
-import { ProdutosPage } from "./pages/ProdutosPage";
+import { CadastroPage } from "./pages/CadastroPage";
 import { RelatoriosPage } from "./pages/RelatoriosPage";
 import { AuditoriaPage } from "./pages/AuditoriaPage";
 import { ConfiguracoesPage } from "./pages/ConfiguracoesPage";
@@ -19,7 +19,8 @@ export default function App() {
           <Route path="/login" element={<LoginPage />} />
           <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
           <Route path="/metas" element={<ProtectedRoute><MetasPage /></ProtectedRoute>} />
-          <Route path="/produtos" element={<ProtectedRoute><ProdutosPage /></ProtectedRoute>} />
+          <Route path="/cadastro" element={<ProtectedRoute><CadastroPage /></ProtectedRoute>} />
+          <Route path="/produtos" element={<Navigate to="/cadastro" replace />} />
           <Route path="/relatorios" element={<ProtectedRoute><RelatoriosPage /></ProtectedRoute>} />
           <Route path="/auditoria" element={<ProtectedRoute><AuditoriaPage /></ProtectedRoute>} />
           <Route path="/configuracoes" element={<ProtectedRoute><ConfiguracoesPage /></ProtectedRoute>} />
