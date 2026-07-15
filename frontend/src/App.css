@@ -465,6 +465,7 @@ td.editing input {
 /* Indicadores agrupados por produto, com hierarquia IC (destaque) / IV (subordinado) */
 .produtos-wrapper {
   margin-bottom: 20px;
+  overflow-x: auto;
 }
 .setor-titulo {
   font-size: 15px;
@@ -559,11 +560,14 @@ td.editing input {
 
 .indicador-row {
   display: flex;
+  flex-wrap: nowrap;
   align-items: center;
   gap: 12px;
   min-height: 40px;
   padding: 8px 12px;
   border-bottom: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+  width: max-content;
+  min-width: 100%;
 }
 .indicador-row:last-child {
   border-bottom: none;
@@ -769,6 +773,44 @@ td.editing input {
 }
 .indicador-row-periodo .indicador-row-valor-numero {
   font-size: 14px;
+}
+.indicador-row-acumulo {
+  flex: 0 0 190px;
+  border-right: 1px dashed var(--border);
+  margin-right: 8px;
+  padding-right: 8px;
+  text-align: right;
+}
+.indicador-row-acumulo-label {
+  font-size: 10px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.indicador-row-acumulo-valores {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  font-size: 13px;
+  white-space: nowrap;
+}
+.indicador-row-acumulo-meta {
+  color: var(--text-muted);
+}
+.indicador-row-acumulo-real {
+  color: var(--text);
+  font-weight: 700;
+}
+.indicador-row-acumulo-percentual {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+.indicador-row-acumulo-percentual.ok {
+  color: var(--ok);
+}
+.indicador-row-acumulo-percentual.nok {
+  color: var(--nok);
 }
 .legenda-cores-atingimento {
   display: flex;
@@ -1011,6 +1053,8 @@ tr.produto-separador td {
   .indicador-row {
     flex-wrap: wrap;
     row-gap: 4px;
+    width: auto;
+    min-width: 0;
   }
   .indicador-row.tipo-iv {
     padding-left: 12px;

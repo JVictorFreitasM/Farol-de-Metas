@@ -43,7 +43,14 @@ function agruparPorProduto(metas: Meta[]): GrupoProduto[] {
 function formatNumber(valor: string | number | null): string {
   if (valor === null || valor === undefined) return "-";
   const n = typeof valor === "string" ? parseFloat(valor) : valor;
-  return Number.isFinite(n) ? n.toString() : "-";
+  return Number.isFinite(n) ? n.toLocaleString("pt-BR", { maximumFractionDigits: 4 }) : "-";
+}
+
+function calcularAtingimentoAcum(meta: Meta): number | null {
+  const acumMeta = typeof meta.acum_meta === "string" ? parseFloat(meta.acum_meta) : meta.acum_meta;
+  const acumReal = typeof meta.acum_real === "string" ? parseFloat(meta.acum_real) : meta.acum_real;
+  if (!acumMeta) return null;
+  return ((acumReal ?? 0) / acumMeta) * 100;
 }
 
 function slugify(texto: string): string {
@@ -207,6 +214,22 @@ export function MetasIndicadoresCards({
             )}
           </div>
         )}
+
+        <div className="indicador-row-acumulo" title="Acúmulo do ano">
+          <div className="indicador-row-acumulo-label">Acúmulo</div>
+          <div className="indicador-row-acumulo-valores">
+            <span className="indicador-row-acumulo-meta">Meta: {formatNumber(meta.acum_meta)}</span>
+            <span className="indicador-row-acumulo-real">Real: {formatNumber(meta.acum_real)}</span>
+          </div>
+          {(() => {
+            const atingimento = calcularAtingimentoAcum(meta);
+            return (
+              <div className={`indicador-row-acumulo-percentual ${meta.status_acum ?? ""}`}>
+                {atingimento != null ? `${atingimento.toFixed(1)}%` : "-"}
+              </div>
+            );
+          })()}
+        </div>
 
         <div className="indicador-row-valor">
           <div className="indicador-row-valor-label">Meta</div>
