@@ -133,13 +133,15 @@ function somaOuMedia(valores: Decimal[], tipo: "soma" | "media"): Decimal | null
   return tipo === "media" ? soma.div(valores.length) : soma;
 }
 
-/** SUM(reais) / SUM(metas) * 100 — usado por proporcao_agregada. */
+/** SUM(reais) / SUM(metas) — usado por proporcao_agregada. Sem *100: no app, campos de
+ * unidade "%" guardam a fração decimal (ex: meta_ano=0.98 representa 98%), então o resultado
+ * desta razão já precisa estar na mesma escala decimal para comparar corretamente com acum_meta. */
 function proporcaoAgregada(valoresReal: Decimal[], valoresMeta: Decimal[]): Decimal | null {
   if (valoresReal.length === 0 || valoresMeta.length === 0) return null;
   const somaReal = valoresReal.reduce((acc, v) => acc.plus(v), new Decimal(0));
   const somaMeta = valoresMeta.reduce((acc, v) => acc.plus(v), new Decimal(0));
   if (somaMeta.isZero()) return null;
-  return somaReal.div(somaMeta).mul(100);
+  return somaReal.div(somaMeta);
 }
 
 export interface ConfigAgregacaoIC {
