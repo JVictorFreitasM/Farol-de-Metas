@@ -18,12 +18,14 @@ interface MesStatus {
 }
 type DetalheSetor = { loading: true } | { loading: false; mesesStatus: MesStatus[] };
 
-/** Para cada um dos 12 meses, verifica se todos os IVs ativos do setor têm "real" preenchido. */
+/** Para cada um dos 12 meses, verifica se todos os indicadores ativos do setor (IC + IV) têm
+ * "real" preenchido. Preenchimento é diferente de atingimento: um IC sem dado também conta como
+ * pendência, mesmo que não entre no cálculo de % Atingimento (que é só sobre IVs). */
 function computarMesesStatus(metas: Meta[]): MesStatus[] {
-  const ivs = metas.filter((m) => m.ic_iv === "IV" && m.ativo);
+  const todos = metas.filter((m) => m.ativo);
   return MESES.map((mes) => {
-    const total = ivs.length;
-    const pendentes = ivs.filter((m) => m.meses[mes].real === null).length;
+    const total = todos.length;
+    const pendentes = todos.filter((m) => m.meses[mes].real === null).length;
     const status: StatusMeta | null = total > 0 ? (pendentes === 0 ? "ok" : "nok") : null;
     return { mes, total, pendentes, status };
   });
@@ -96,9 +98,9 @@ export function DashboardPage() {
   }, [ano, setorId]);
 
   const consolidacao = useMemo(() => {
-    const ivs = metasSetor.filter((m) => m.ic_iv === "IV" && m.ativo);
-    const pendentes = ivs.filter((m) => m.meses[mes].real === null).length;
-    const total = ivs.length;
+    const todos = metasSetor.filter((m) => m.ativo);
+    const pendentes = todos.filter((m) => m.meses[mes].real === null).length;
+    const total = todos.length;
     const percentual = total > 0 ? ((total - pendentes) / total) * 100 : 0;
     return { percentual, completo: total > 0 && pendentes === 0 };
   }, [metasSetor, mes]);

@@ -43,9 +43,13 @@ relatoriosRouter.get("/dashboard", async (req, res, next) => {
       return { mes: mes.toLowerCase(), status_ok: ok, status_nok: nok };
     });
 
+    // Preenchimento (metas_incompletas) considera TODOS os indicadores (IC + IV) — diferente do
+    // atingimento acima, que é só IV. Um IC sem "real" preenchido também é uma pendência real.
+    const todos = await prisma.meta.findMany({ where: { setorId, ano: query.ano, ativo: true } });
+
     const hoje = new Date();
     const mesLimite = query.ano === hoje.getFullYear() ? hoje.getMonth() + 1 : 12;
-    const metasIncompletas = ivs
+    const metasIncompletas = todos
       .map((meta) => {
         const mesesFaltando = MESES.slice(0, mesLimite).filter((mes) => {
           const metaCampo = `meta${mes}` as keyof Meta;
@@ -126,13 +130,16 @@ relatoriosRouter.get("/comparativa", authorize("gerente", "admin"), async (req, 
       let consolidacaoGeral: { percentual_preenchido: number; completo: boolean } | null = null;
       let metasPendentes: { id: string; indicador: string; ic_iv: string; responsavel: string }[] = [];
       if (mesKey) {
+        // Preenchimento considera TODOS os indicadores (IC + IV) — diferente do % atingimento
+        // acima, que é só IV. Um IC sem "real" preenchido também é uma pendência real.
+        const todos = await prisma.meta.findMany({ where: { setorId: setor.id, ano: query.ano, ativo: true } });
         const realCampo = `real${mesKey}` as keyof Meta;
-        const pendentes = ivs.filter((m) => m[realCampo] == null);
-        const preenchidas = totalIndicadores - pendentes.length;
-        const percentualPreenchido = totalIndicadores > 0 ? (preenchidas / totalIndicadores) * 100 : 0;
+        const pendentes = todos.filter((m) => m[realCampo] == null);
+        const preenchidas = todos.length - pendentes.length;
+        const percentualPreenchido = todos.length > 0 ? (preenchidas / todos.length) * 100 : 0;
         consolidacaoGeral = {
           percentual_preenchido: Number(percentualPreenchido.toFixed(2)),
-          completo: totalIndicadores > 0 && pendentes.length === 0,
+          completo: todos.length > 0 && pendentes.length === 0,
         };
         metasPendentes = pendentes.map((m) => ({
           id: m.id,
