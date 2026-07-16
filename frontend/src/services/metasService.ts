@@ -98,3 +98,51 @@ export interface AcumuladoPeriodoResponse {
 export function obterAcumuladoPeriodo(id: string, mesInicio: Mes, mesFim: Mes): Promise<AcumuladoPeriodoResponse> {
   return apiFetch<AcumuladoPeriodoResponse>(`/metas/${id}/acumulado-periodo?mes_inicio=${mesInicio}&mes_fim=${mesFim}`);
 }
+
+export type PeriodoTipo = "mes" | "intervalo" | "trimestre" | "semestre" | "ano";
+
+export interface ComparativoPeriodoParams {
+  periodo_tipo: PeriodoTipo;
+  mes?: Mes;
+  mes_inicio?: Mes;
+  mes_fim?: Mes;
+  trimestre?: 1 | 2 | 3 | 4;
+  semestre?: 1 | 2;
+  ano_comparacao?: number;
+}
+
+interface PeriodoResumo {
+  label: string;
+  tipo: PeriodoTipo;
+  ano: number;
+  meta_acum: string | number | null;
+  real_acum: string | number | null;
+  percentual_execucao: string | number | null;
+  status: StatusMeta | null;
+}
+
+export interface ComparativoResponse {
+  meta_id: string;
+  indicador: string;
+  periodo_principal: PeriodoResumo;
+  periodo_comparacao: PeriodoResumo | null;
+  variacao: {
+    real_delta: string | number | null;
+    real_delta_percentual: string | number | null;
+    meta_delta: string | number | null;
+    meta_delta_percentual: string | number | null;
+  } | null;
+  serie_meses: {
+    mes: Mes;
+    periodo_principal: { meta: string | number | null; real: string | number | null };
+    periodo_comparacao: { meta: string | number | null; real: string | number | null };
+  }[];
+}
+
+export function obterComparativo(id: string, params: ComparativoPeriodoParams): Promise<ComparativoResponse> {
+  const query = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined) query.set(key, String(value));
+  });
+  return apiFetch<ComparativoResponse>(`/metas/${id}/comparativo?${query.toString()}`);
+}

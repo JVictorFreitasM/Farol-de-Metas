@@ -6,7 +6,16 @@ import { authenticate, authorize, resolveSetorId } from "../middleware/auth";
 import { badRequest, conflict, forbidden, notFound } from "../lib/errors";
 import { registrarAuditoria } from "../lib/auditoria";
 import { serializeMeta } from "../lib/serializers";
-import { calcularAcumuladoLinha, calcularAcumuladoPeriodo, MESES, MesKey, recalcularAgregadoIC } from "../lib/metasCalc";
+import {
+  calcularAcumuladoLinha,
+  calcularAcumuladoPeriodo,
+  campoMeta,
+  campoReal,
+  MESES,
+  MesKey,
+  recalcularAgregadoIC,
+  resolverIntervaloMeses,
+} from "../lib/metasCalc";
 
 export const metasRouter = Router();
 metasRouter.use(authenticate);
@@ -194,6 +203,133 @@ metasRouter.get("/:id/acumulado-periodo", async (req, res, next) => {
         meta: d.meta,
         real: d.real,
       })),
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+const mesEnum = z.enum(MESES.map((mes) => mes.toLowerCase()) as [string, ...string[]]);
+
+const comparativoQuerySchema = z.object({
+  periodo_tipo: z.enum(["mes", "intervalo", "trimestre", "semestre", "ano"]),
+  mes: mesEnum.optional(),
+  mes_inicio: mesEnum.optional(),
+  mes_fim: mesEnum.optional(),
+  trimestre: z.coerce.number().int().min(1).max(4).optional(),
+  semestre: z.coerce.number().int().min(1).max(2).optional(),
+  ano_comparacao: z.coerce.number().int().optional(),
+});
+
+/** Compara o acumulado de um indicador em um período (mês/intervalo/trimestre/semestre/ano)
+ * com o mesmo período de outro ano. Como cada linha da tabela metas pertence a um único ano,
+ * o "outro ano" é resolvido buscando uma linha com o mesmo (setor, indicador, ic_iv) — não há
+ * um id estável entre anos, então o pareamento é por nome do indicador dentro do setor. */
+metasRouter.get("/:id/comparativo", async (req, res, next) => {
+  try {
+    const usuario = req.usuario!;
+    const query = comparativoQuerySchema.parse(req.query);
+
+    const meta = await prisma.meta.findUnique({ where: { id: req.params.id } });
+    if (!meta) throw notFound("Meta não encontrada");
+    if (usuario.role === "responsavel" && meta.setorId !== usuario.setorId) {
+      throw forbidden("Acesso negado a outro setor");
+    }
+
+    let intervalo;
+    try {
+      intervalo = resolverIntervaloMeses(query.periodo_tipo, {
+        mes: query.mes ? mesLowerParaMesKey[query.mes] : undefined,
+        mesInicio: query.mes_inicio ? mesLowerParaMesKey[query.mes_inicio] : undefined,
+        mesFim: query.mes_fim ? mesLowerParaMesKey[query.mes_fim] : undefined,
+        trimestre: query.trimestre,
+        semestre: query.semestre,
+      });
+    } catch (err) {
+      throw badRequest(err instanceof Error ? err.message : "Período inválido");
+    }
+
+    const anoComparacao = query.ano_comparacao ?? meta.ano - 1;
+    const metaComparacao =
+      anoComparacao === meta.ano
+        ? null
+        : await prisma.meta.findFirst({
+            where: { setorId: meta.setorId, ano: anoComparacao, indicador: meta.indicador, icIv: meta.icIv, ativo: true },
+          });
+
+    const principal = calcularAcumuladoPeriodo(meta, intervalo.mesInicio, intervalo.mesFim);
+    const comparacao = metaComparacao ? calcularAcumuladoPeriodo(metaComparacao, intervalo.mesInicio, intervalo.mesFim) : null;
+
+    const realDelta =
+      comparacao && principal.acumReal != null && comparacao.acumReal != null
+        ? principal.acumReal.minus(comparacao.acumReal)
+        : null;
+    const metaDelta =
+      comparacao && principal.acumMeta != null && comparacao.acumMeta != null
+        ? principal.acumMeta.minus(comparacao.acumMeta)
+        : null;
+    const realDeltaPercentual =
+      realDelta != null && comparacao?.acumReal != null && !comparacao.acumReal.isZero()
+        ? realDelta.div(comparacao.acumReal).mul(100).toDecimalPlaces(2)
+        : null;
+    const metaDeltaPercentual =
+      metaDelta != null && comparacao?.acumMeta != null && !comparacao.acumMeta.isZero()
+        ? metaDelta.div(comparacao.acumMeta).mul(100).toDecimalPlaces(2)
+        : null;
+
+    const serieMeses = MESES.map((mes) => ({
+      mes: mes.toLowerCase(),
+      periodo_principal: { meta: meta[campoMeta(mes)], real: meta[campoReal(mes)] },
+      periodo_comparacao: metaComparacao
+        ? { meta: metaComparacao[campoMeta(mes)], real: metaComparacao[campoReal(mes)] }
+        : { meta: null, real: null },
+    }));
+
+    await registrarAuditoria(req, {
+      acao: "READ",
+      tabela: "metas",
+      registroId: meta.id,
+      setorId: meta.setorId,
+      detalhes: {
+        evento: "comparativo_consultado",
+        periodo_tipo: query.periodo_tipo,
+        ano_principal: meta.ano,
+        ano_comparacao: anoComparacao,
+      },
+    });
+
+    res.json({
+      meta_id: meta.id,
+      indicador: meta.indicador,
+      periodo_principal: {
+        label: `${intervalo.label} ${meta.ano}`,
+        tipo: query.periodo_tipo,
+        ano: meta.ano,
+        meta_acum: principal.acumMeta,
+        real_acum: principal.acumReal,
+        percentual_execucao: principal.percentual,
+        status: principal.status,
+      },
+      periodo_comparacao: comparacao
+        ? {
+            label: `${intervalo.label} ${anoComparacao}`,
+            tipo: query.periodo_tipo,
+            ano: anoComparacao,
+            meta_acum: comparacao.acumMeta,
+            real_acum: comparacao.acumReal,
+            percentual_execucao: comparacao.percentual,
+            status: comparacao.status,
+          }
+        : null,
+      variacao: comparacao
+        ? {
+            real_delta: realDelta,
+            real_delta_percentual: realDeltaPercentual,
+            meta_delta: metaDelta,
+            meta_delta_percentual: metaDeltaPercentual,
+          }
+        : null,
+      serie_meses: serieMeses,
     });
   } catch (err) {
     next(err);

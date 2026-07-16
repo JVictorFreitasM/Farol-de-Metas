@@ -86,6 +86,47 @@ export function calcularAcumuladoPeriodo(
   };
 }
 
+export type PeriodoTipo = "mes" | "intervalo" | "trimestre" | "semestre" | "ano";
+
+/** Resolve um tipo de período (mês/intervalo/trimestre/semestre/ano) no intervalo [mesInicio, mesFim]
+ * que calcularAcumuladoPeriodo espera, mais um rótulo legível (ex: "Q1", "H1", "Jan–Mar"). */
+export function resolverIntervaloMeses(
+  tipo: PeriodoTipo,
+  params: { mes?: MesKey; mesInicio?: MesKey; mesFim?: MesKey; trimestre?: number; semestre?: number }
+): { mesInicio: MesKey; mesFim: MesKey; label: string } {
+  switch (tipo) {
+    case "mes": {
+      if (!params.mes) throw new Error("Parâmetro 'mes' é obrigatório para periodo_tipo=mes");
+      return { mesInicio: params.mes, mesFim: params.mes, label: params.mes };
+    }
+    case "intervalo": {
+      if (!params.mesInicio || !params.mesFim) {
+        throw new Error("Parâmetros 'mes_inicio' e 'mes_fim' são obrigatórios para periodo_tipo=intervalo");
+      }
+      if (MESES.indexOf(params.mesInicio) > MESES.indexOf(params.mesFim)) {
+        throw new Error("mes_inicio deve ser anterior ou igual a mes_fim");
+      }
+      return { mesInicio: params.mesInicio, mesFim: params.mesFim, label: `${params.mesInicio}–${params.mesFim}` };
+    }
+    case "trimestre": {
+      if (!params.trimestre || params.trimestre < 1 || params.trimestre > 4) {
+        throw new Error("Parâmetro 'trimestre' deve ser 1, 2, 3 ou 4");
+      }
+      const inicioIdx = (params.trimestre - 1) * 3;
+      return { mesInicio: MESES[inicioIdx], mesFim: MESES[inicioIdx + 2], label: `Q${params.trimestre}` };
+    }
+    case "semestre": {
+      if (!params.semestre || params.semestre < 1 || params.semestre > 2) {
+        throw new Error("Parâmetro 'semestre' deve ser 1 ou 2");
+      }
+      const inicioIdx = (params.semestre - 1) * 6;
+      return { mesInicio: MESES[inicioIdx], mesFim: MESES[inicioIdx + 5], label: `H${params.semestre}` };
+    }
+    case "ano":
+      return { mesInicio: "Jan", mesFim: "Dez", label: "Ano" };
+  }
+}
+
 function somaOuMedia(valores: Decimal[], tipo: "soma" | "media"): Decimal | null {
   if (valores.length === 0) return null;
   const soma = valores.reduce((acc, v) => acc.plus(v), new Decimal(0));

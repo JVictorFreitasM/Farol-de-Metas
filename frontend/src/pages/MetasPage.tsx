@@ -3,6 +3,7 @@ import { AppLayout } from "../components/AppLayout";
 import { MetasMonthCards } from "../components/MetasMonthCards";
 import { MetasIndicadoresCards } from "../components/MetasIndicadoresCards";
 import { MetasDashboard } from "../components/MetasDashboard";
+import { ComparativoIndicador } from "../components/ComparativoIndicador";
 import { useAuth } from "../hooks/useAuth";
 import { useMetas } from "../hooks/useMetas";
 import { gerarOpcoesAno, useAnoSelecionado } from "../hooks/useAnoSelecionado";
@@ -10,7 +11,7 @@ import { useSetorSelecionado } from "../hooks/useSetorSelecionado";
 import { AcumuladoPeriodoResponse, obterAcumuladoPeriodo } from "../services/metasService";
 import { MESES, MESES_LABEL, Mes } from "../types";
 
-type Aba = "tabela" | "dashboard";
+type Aba = "tabela" | "dashboard" | "comparativo";
 
 export function MetasPage() {
   const { usuario } = useAuth();
@@ -117,6 +118,7 @@ export function MetasPage() {
       <div className="tabs">
         <button className={aba === "tabela" ? "active" : ""} onClick={() => setAba("tabela")}>Tabela</button>
         <button className={aba === "dashboard" ? "active" : ""} onClick={() => setAba("dashboard")}>Dashboard</button>
+        <button className={aba === "comparativo" ? "active" : ""} onClick={() => setAba("comparativo")}>Comparativo</button>
       </div>
     </div>
   );
@@ -165,6 +167,7 @@ export function MetasPage() {
           <MetasDashboard metas={metas} ano={ano} />
         </>
       )}
+      {!loading && setorId && aba === "comparativo" && <ComparativoIndicador metas={metas} anoAtual={ano} />}
     </AppLayout>
   );
 }
