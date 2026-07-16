@@ -1,5 +1,4 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
 import { toast } from "react-toastify";
 import { AppLayout } from "../components/AppLayout";
 import { DashboardCards } from "../components/DashboardCards";
@@ -9,55 +8,25 @@ import { gerarOpcoesAno, useAnoSelecionado } from "../hooks/useAnoSelecionado";
 import { useSetorSelecionado } from "../hooks/useSetorSelecionado";
 import { comparativaSetores, dashboardSetor } from "../services/relatoriosService";
 import { listarMetas, listarSetores } from "../services/metasService";
-import { ComparativaSetor, DashboardResumo, Meta, MESES, MESES_LABEL, Mes, Setor } from "../types";
+import { ComparativaSetor, DashboardResumo, Meta, MESES, MESES_LABEL, Mes, Setor, StatusMeta } from "../types";
 
-interface NaoPreenchido {
-  id: string;
-  indicador: string;
-  responsavel: string;
-  mesesFaltando: Mes[];
+interface MesStatus {
+  mes: Mes;
+  total: number;
+  pendentes: number;
+  status: StatusMeta | null;
 }
-interface NaoBatida {
-  id: string;
-  indicador: string;
-  responsavel: string;
-  real: number;
-  meta: number;
-  percentual: number;
-}
-type DetalheSetor =
-  | { loading: true }
-  | { loading: false; naoPreenchidos: NaoPreenchido[]; naoBatidas: NaoBatida[] };
+type DetalheSetor = { loading: true } | { loading: false; mesesStatus: MesStatus[] };
 
-function num(valor: string | number | null): number | null {
-  if (valor === null || valor === undefined) return null;
-  const n = typeof valor === "string" ? parseFloat(valor) : valor;
-  return Number.isFinite(n) ? n : null;
-}
-
-function fmt(valor: number): string {
-  return valor.toLocaleString("pt-BR", { maximumFractionDigits: 4 });
-}
-
-function computarDetalhe(metas: Meta[], mes: Mes): { naoPreenchidos: NaoPreenchido[]; naoBatidas: NaoBatida[] } {
+/** Para cada um dos 12 meses, verifica se todos os IVs ativos do setor têm "real" preenchido. */
+function computarMesesStatus(metas: Meta[]): MesStatus[] {
   const ivs = metas.filter((m) => m.ic_iv === "IV" && m.ativo);
-  const naoPreenchidos = ivs
-    .filter((m) => m.meses[mes].real === null)
-    .map((m) => ({
-      id: m.id,
-      indicador: m.indicador,
-      responsavel: m.responsavel,
-      mesesFaltando: MESES.filter((x) => m.meses[x].real === null),
-    }));
-  const naoBatidas = ivs
-    .filter((m) => m.meses[mes].real !== null && m.meses[mes].status === "nok")
-    .map((m) => {
-      const meta = num(m.meses[mes].meta) ?? 0;
-      const real = num(m.meses[mes].real) ?? 0;
-      const percentual = meta ? (real / meta) * 100 : 0;
-      return { id: m.id, indicador: m.indicador, responsavel: m.responsavel, real, meta, percentual };
-    });
-  return { naoPreenchidos, naoBatidas };
+  return MESES.map((mes) => {
+    const total = ivs.length;
+    const pendentes = ivs.filter((m) => m.meses[mes].real === null).length;
+    const status: StatusMeta | null = total > 0 ? (pendentes === 0 ? "ok" : "nok") : null;
+    return { mes, total, pendentes, status };
+  });
 }
 
 export function DashboardPage() {
@@ -98,11 +67,11 @@ export function DashboardPage() {
     }
   }, [ano, mes, isGerente]);
 
-  // Detalhe da linha depende de mês/ano — invalida o cache e recolhe ao trocar o filtro.
+  // Detalhe da linha mostra os 12 meses do ano — invalida o cache e recolhe ao trocar o ano.
   useEffect(() => {
     setDetalhes({});
     setSetorExpandido(null);
-  }, [ano, mes]);
+  }, [ano]);
 
   useEffect(() => {
     let ativo = true;
@@ -141,8 +110,8 @@ export function DashboardPage() {
     if (!jaAberto && !detalhes[alvoSetorId]) {
       setDetalhes((prev) => ({ ...prev, [alvoSetorId]: { loading: true } }));
       listarMetas({ setor_id: alvoSetorId, ano })
-        .then((r) => setDetalhes((prev) => ({ ...prev, [alvoSetorId]: { loading: false, ...computarDetalhe(r.data, mes) } })))
-        .catch(() => setDetalhes((prev) => ({ ...prev, [alvoSetorId]: { loading: false, naoPreenchidos: [], naoBatidas: [] } })));
+        .then((r) => setDetalhes((prev) => ({ ...prev, [alvoSetorId]: { loading: false, mesesStatus: computarMesesStatus(r.data) } })))
+        .catch(() => setDetalhes((prev) => ({ ...prev, [alvoSetorId]: { loading: false, mesesStatus: [] } })));
     }
   };
 
@@ -151,53 +120,22 @@ export function DashboardPage() {
     if (detalhe.loading) return <p className="texto-informativo">Carregando...</p>;
     return (
       <>
-        <div className="setor-detalhe-secao">
-          <div className="setor-detalhe-titulo">Indicadores não preenchidos ({MESES_LABEL[mes]})</div>
-          {detalhe.naoPreenchidos.length === 0 ? (
-            <p className="texto-informativo">✓ Todos os indicadores foram preenchidos este mês.</p>
-          ) : (
-            <ul className="setor-detalhe-lista">
-              {detalhe.naoPreenchidos.map((m) => (
-                <li key={m.id}>
-                  <strong>{m.indicador}</strong> — {m.responsavel}
-                  <div className="setor-detalhe-meses">
-                    Faltam: {m.mesesFaltando.map((x) => MESES_LABEL[x]).join(", ")}
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-
-        <div className="setor-detalhe-secao">
-          <div className="setor-detalhe-titulo">Metas não batidas ({MESES_LABEL[mes]})</div>
-          {detalhe.naoBatidas.length === 0 ? (
-            <p className="texto-informativo">✓ Todas as metas foram atingidas neste mês.</p>
-          ) : (
-            <ul className="setor-detalhe-lista">
-              {detalhe.naoBatidas.map((m) => {
-                const nivel = m.percentual < 75 ? "nok" : m.percentual > 100 ? "ok" : "warn";
-                const icone = nivel === "nok" ? "❌" : nivel === "ok" ? "✓" : "⚠️";
-                return (
-                  <li key={m.id}>
-                    <strong>{m.indicador}</strong> — {m.responsavel}
-                    <div className="setor-detalhe-valores">
-                      Real: {fmt(m.real)} | Meta: {fmt(m.meta)} | Atingimento:{" "}
-                      <span className={`setor-detalhe-atingimento nivel-${nivel}`}>
-                        {m.percentual.toFixed(0)}% {icone}
-                      </span>
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
+        <div className="setor-detalhe-titulo">Meses faltantes</div>
+        <div className="month-cards-section">
+          <div className="month-cards-container">
+            {detalhe.mesesStatus.map((m) => (
+              <div key={m.mes} className="month-card month-card-somente-leitura">
+                <div className="month-card-label">{MESES_LABEL[m.mes]}</div>
+                <div className="month-card-value">{m.total - m.pendentes}/{m.total}</div>
+                <div className={`month-card-status ${m.status ?? "null"}`}>
+                  {m.status ? m.status.toUpperCase() : "-"}
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
 
         <div className="setor-detalhe-acoes">
-          <Link className="btn-secondary" to="/metas" onClick={(e) => e.stopPropagation()}>
-            Editar
-          </Link>
           <button
             className="btn-secondary"
             onClick={(e) => {

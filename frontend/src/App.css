@@ -1230,6 +1230,12 @@ tr.produto-separador td {
   border-color: var(--primary);
 }
 
+.month-card-somente-leitura {
+  cursor: default;
+}
+.month-card-somente-leitura:hover {
+  border-color: var(--border);
+}
 .month-card.selected {
   border-color: var(--primary);
   background: color-mix(in srgb, var(--primary) 8%, transparent);
