@@ -76,6 +76,7 @@ relatoriosRouter.get("/dashboard", async (req, res, next) => {
         const filhosNok = ic.filhos.filter((f) => f.statusAcum === "nok");
         return {
           indicador: ic.indicador,
+          unidade: ic.unidade,
           acumulado: ic.acumReal,
           meta_ano: ic.metaAno,
           percentual:

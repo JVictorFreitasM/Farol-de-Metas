@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { AcumuladoPeriodoResponse, MesesBody } from "../services/metasService";
 import { AcumuladoTooltip } from "./AcumuladoTooltip";
+import { formatValor } from "../lib/format";
 import { Meta, MESES_LABEL, Mes, Role } from "../types";
 
 interface ItemIc {
@@ -38,12 +39,6 @@ function agruparPorProduto(metas: Meta[]): GrupoProduto[] {
   }
 
   return grupos;
-}
-
-function formatNumber(valor: string | number | null): string {
-  if (valor === null || valor === undefined) return "-";
-  const n = typeof valor === "string" ? parseFloat(valor) : valor;
-  return Number.isFinite(n) ? n.toLocaleString("pt-BR", { maximumFractionDigits: 4 }) : "-";
 }
 
 function calcularAtingimentoAcum(meta: Meta): number | null {
@@ -229,7 +224,7 @@ export function MetasIndicadoresCards({
             </div>
             {acumuladosPeriodo[meta.id] ? (
               <div className="indicador-row-valor-numero">
-                {formatNumber(acumuladosPeriodo[meta.id].acumulados.real)} / {formatNumber(acumuladosPeriodo[meta.id].acumulados.meta)}
+                {formatValor(acumuladosPeriodo[meta.id].acumulados.real, meta.unidade)} / {formatValor(acumuladosPeriodo[meta.id].acumulados.meta, meta.unidade)}
                 {acumuladosPeriodo[meta.id].acumulados.status && (
                   <span className={`badge-status ${acumuladosPeriodo[meta.id].acumulados.status}`} style={{ marginLeft: 4 }}>
                     {acumuladosPeriodo[meta.id].acumulados.status === "ok" ? "OK" : "NOK"}
@@ -245,8 +240,8 @@ export function MetasIndicadoresCards({
         <div className="indicador-row-acumulo" title="Acúmulo do ano">
           <div className="indicador-row-acumulo-label">Acúmulo</div>
           <div className="indicador-row-acumulo-valores">
-            <span className="indicador-row-acumulo-meta">Meta: {formatNumber(meta.acum_meta)}</span>
-            <span className="indicador-row-acumulo-real">Real: {formatNumber(meta.acum_real)}</span>
+            <span className="indicador-row-acumulo-meta">Meta: {formatValor(meta.acum_meta, meta.unidade)}</span>
+            <span className="indicador-row-acumulo-real">Real: {formatValor(meta.acum_real, meta.unidade)}</span>
           </div>
           {(() => {
             const atingimento = calcularAtingimentoAcum(meta);
@@ -280,7 +275,7 @@ export function MetasIndicadoresCards({
               title={meta.agrega_filhos ? "Calculado automaticamente a partir dos IVs filhos" : undefined}
               onClick={() => iniciarEdicaoMeta(meta)}
             >
-              {formatNumber(meta.meses[mes].meta)}
+              {formatValor(meta.meses[mes].meta, meta.unidade)}
             </div>
           )}
         </div>
@@ -307,7 +302,7 @@ export function MetasIndicadoresCards({
               title={meta.agrega_filhos ? "Calculado automaticamente a partir dos IVs filhos" : undefined}
               onClick={() => iniciarEdicao(meta)}
             >
-              {formatNumber(meta.meses[mes].real)}
+              {formatValor(meta.meses[mes].real, meta.unidade)}
             </div>
           )}
         </div>

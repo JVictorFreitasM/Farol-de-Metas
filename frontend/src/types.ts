@@ -123,6 +123,7 @@ export interface DashboardResumo {
   evolucao_mensal: { mes: string; status_ok: number; status_nok: number }[];
   ic_com_problemas: {
     indicador: string;
+    unidade: string;
     acumulado: string | number;
     meta_ano: string | number | null;
     percentual: string | number | null;

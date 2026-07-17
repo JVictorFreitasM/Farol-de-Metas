@@ -7,6 +7,7 @@ import { useAuth } from "../hooks/useAuth";
 import { gerarOpcoesAno, useAnoSelecionado } from "../hooks/useAnoSelecionado";
 import { comparativaSetores, dashboardSetor } from "../services/relatoriosService";
 import { listarSetores } from "../services/metasService";
+import { formatValor } from "../lib/format";
 import { ComparativaSetor, DashboardResumo, Setor } from "../types";
 
 type Aba = "dashboard" | "comparativa";
@@ -117,9 +118,9 @@ export function RelatoriosPage() {
                   {dados.ic_com_problemas.map((ic) => (
                     <tr key={ic.indicador}>
                       <td>{ic.indicador}</td>
-                      <td>{ic.acumulado}</td>
-                      <td>{ic.meta_ano ?? "-"}</td>
-                      <td>{ic.percentual ?? "-"}</td>
+                      <td>{formatValor(ic.acumulado, ic.unidade)}</td>
+                      <td>{formatValor(ic.meta_ano, ic.unidade)}</td>
+                      <td>{ic.percentual !== null ? `${ic.percentual}%` : "-"}</td>
                       <td>{ic.filhos_nok.join(", ")}</td>
                     </tr>
                   ))}

@@ -1,12 +1,15 @@
 import { ReactNode, useLayoutEffect, useRef, useState } from "react";
 import { toast } from "react-toastify";
 import { obterAcumuladoPeriodo } from "../services/metasService";
+import { formatValor } from "../lib/format";
 import { Meta, MESES, MESES_LABEL, Mes } from "../types";
 
-function formatNumero(valor: string | number | null): string {
+/** Só para percentuais já calculados (0-100), como "Atingimento" — nunca para meta/real bruto,
+ * que precisa de formatValor(valor, unidade) para converter corretamente indicadores em "%". */
+function formatPercentual(valor: string | number | null): string {
   if (valor === null || valor === undefined) return "-";
   const n = typeof valor === "string" ? parseFloat(valor) : valor;
-  return Number.isFinite(n) ? n.toLocaleString("pt-BR", { maximumFractionDigits: 4 }) : "-";
+  return Number.isFinite(n) ? n.toLocaleString("pt-BR", { maximumFractionDigits: 1 }) : "-";
 }
 
 function calcularPercentual(meta: Meta): string {
@@ -160,7 +163,7 @@ export function AcumuladoTooltip({
           <div className="acumulado-tooltip-body">
             <div className="acumulado-tooltip-row">
               <span>Meta Anual</span>
-              <span>{formatNumero(meta.meta_ano)}</span>
+              <span>{formatValor(meta.meta_ano, meta.unidade)}</span>
             </div>
             <div className="acumulado-tooltip-row">
               <span>Acum. Meta</span>
@@ -183,13 +186,13 @@ export function AcumuladoTooltip({
                   title={podeEditarMetaManual && ehMetaManual ? "Clique para editar a meta manual" : undefined}
                   onClick={iniciarEdicaoMetaManual}
                 >
-                  {formatNumero(meta.acum_meta)}
+                  {formatValor(meta.acum_meta, meta.unidade)}
                 </span>
               )}
             </div>
             <div className="acumulado-tooltip-row">
               <span>Acum. Real</span>
-              <span>{formatNumero(meta.acum_real)}</span>
+              <span>{formatValor(meta.acum_real, meta.unidade)}</span>
             </div>
             <div className="acumulado-tooltip-row">
               <span>Tipo Acum.</span>
@@ -247,16 +250,16 @@ export function AcumuladoTooltip({
                     </div>
                     <div className="acumulado-tooltip-row">
                       <span>Acum. Meta</span>
-                      <span>{formatNumero(resultado.acumulados.meta)}</span>
+                      <span>{formatValor(resultado.acumulados.meta, meta.unidade)}</span>
                     </div>
                     <div className="acumulado-tooltip-row">
                       <span>Acum. Real</span>
-                      <span>{formatNumero(resultado.acumulados.real)}</span>
+                      <span>{formatValor(resultado.acumulados.real, meta.unidade)}</span>
                     </div>
                     <div className="acumulado-tooltip-row">
                       <span>Atingimento</span>
                       <span className={resultado.acumulados.status ? `status-${resultado.acumulados.status}` : undefined}>
-                        {resultado.acumulados.percentual != null ? `${formatNumero(resultado.acumulados.percentual)}%` : "-"}
+                        {resultado.acumulados.percentual != null ? `${formatPercentual(resultado.acumulados.percentual)}%` : "-"}
                       </span>
                     </div>
                     <div className={`acumulado-tooltip-status ${resultado.acumulados.status ?? "vazio"}`}>

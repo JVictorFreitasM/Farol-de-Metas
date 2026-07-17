@@ -20,6 +20,12 @@ const prisma = new PrismaClient()
  * real). Só o Real passa a ser calculado a partir dos filhos; a Meta continua um valor fixo
  * (as células mensais de Meta, que antes repetiam o mesmo valor todo mês, ficam em branco —
  * só o acumulado anual importa para esse tipo de indicador).
+ *
+ * tipo_acumulado também muda de "soma" para "media": os 12 meses de Real passam a guardar a
+ * proporção agregada MENSAL dos filhos (uma razão ~1.0 = ~100%, não uma quantidade); somar 12
+ * meses de ~100% daria ~1200% sem sentido em qualquer cálculo que re-acumule a partir dos meses
+ * (ex: GET /metas/:id/comparativo, /acumulado-periodo) — média é a agregação correta para uma
+ * série de percentuais mensais.
  */
 const ICS_ALVO = ['Sistemas', 'Equipamentos e Serviços', 'Inventário']
 const ANOS = [2024, 2025, 2026]
@@ -55,6 +61,7 @@ async function main() {
           agregaFilhos: true,
           tipoAgregacaoMeta: 'meta_manual',
           tipoAgregacaoReal: 'proporcao_agregada',
+          tipoAcumulado: 'media',
           metaManualAcum,
           ...dataMeses,
           acumMeta: agregado.acumMeta,

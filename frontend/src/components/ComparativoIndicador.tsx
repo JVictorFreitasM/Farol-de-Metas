@@ -13,6 +13,7 @@ import {
   YAxis,
 } from "recharts";
 import { ComparativoResponse, obterComparativo, PeriodoTipo } from "../services/metasService";
+import { formatValor, paraEscalaExibicao } from "../lib/format";
 import { Meta, MESES, MESES_LABEL, Mes } from "../types";
 
 const COR_PRINCIPAL = "#2563eb";
@@ -24,11 +25,8 @@ function num(valor: string | number | null): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-function fmt(valor: string | number | null): string {
-  const n = num(valor);
-  return n === null ? "-" : n.toLocaleString("pt-BR", { maximumFractionDigits: 2 });
-}
-
+/** Só para percentuais já calculados (0-100), como % Execução e variação percentual —
+ * nunca para meta/real bruto, que precisa de formatValor(valor, unidade). */
 function fmtPct(valor: string | number | null): string {
   const n = num(valor);
   return n === null ? "-" : `${n.toFixed(1)}%`;
@@ -73,14 +71,16 @@ export function ComparativoIndicador({ metas, anoAtual }: { metas: Meta[]; anoAt
     }
   };
 
+  const unidadeSelecionada = indicadores.find((m) => m.id === metaId)?.unidade ?? "";
+
   const serieChart = useMemo(() => {
     if (!resultado) return [];
     return resultado.serie_meses.map((s) => ({
       mes: MESES_LABEL[s.mes],
-      [`Real ${resultado.periodo_principal.ano}`]: num(s.periodo_principal.real),
-      [`Real ${resultado.periodo_comparacao?.ano ?? anoComparacao}`]: num(s.periodo_comparacao.real),
+      [`Real ${resultado.periodo_principal.ano}`]: paraEscalaExibicao(s.periodo_principal.real, unidadeSelecionada),
+      [`Real ${resultado.periodo_comparacao?.ano ?? anoComparacao}`]: paraEscalaExibicao(s.periodo_comparacao.real, unidadeSelecionada),
     }));
-  }, [resultado, anoComparacao]);
+  }, [resultado, anoComparacao, unidadeSelecionada]);
 
   const chavesPrincipal = resultado ? `Real ${resultado.periodo_principal.ano}` : "";
   const chavesComparacao = resultado ? `Real ${resultado.periodo_comparacao?.ano ?? anoComparacao}` : "";
@@ -186,18 +186,18 @@ export function ComparativoIndicador({ metas, anoAtual }: { metas: Meta[]; anoAt
           <div className="cards-row">
             <div className="card">
               <div className="card-title">Real — {resultado.periodo_principal.label}</div>
-              <div className="card-value" style={{ color: COR_PRINCIPAL }}>{fmt(resultado.periodo_principal.real_acum)}</div>
+              <div className="card-value" style={{ color: COR_PRINCIPAL }}>{formatValor(resultado.periodo_principal.real_acum, unidadeSelecionada)}</div>
               {resultado.periodo_comparacao && (
                 <div className="texto-informativo">
-                  vs <span style={{ color: COR_COMPARACAO }}>{fmt(resultado.periodo_comparacao.real_acum)}</span> em {resultado.periodo_comparacao.label}
+                  vs <span style={{ color: COR_COMPARACAO }}>{formatValor(resultado.periodo_comparacao.real_acum, unidadeSelecionada)}</span> em {resultado.periodo_comparacao.label}
                 </div>
               )}
             </div>
             <div className="card">
               <div className="card-title">Meta — {resultado.periodo_principal.label}</div>
-              <div className="card-value">{fmt(resultado.periodo_principal.meta_acum)}</div>
+              <div className="card-value">{formatValor(resultado.periodo_principal.meta_acum, unidadeSelecionada)}</div>
               {resultado.periodo_comparacao && (
-                <div className="texto-informativo">vs {fmt(resultado.periodo_comparacao.meta_acum)} em {resultado.periodo_comparacao.label}</div>
+                <div className="texto-informativo">vs {formatValor(resultado.periodo_comparacao.meta_acum, unidadeSelecionada)} em {resultado.periodo_comparacao.label}</div>
               )}
             </div>
             <div className="card">
@@ -213,7 +213,7 @@ export function ComparativoIndicador({ metas, anoAtual }: { metas: Meta[]; anoAt
               <div className="card-title">Variação (Real)</div>
               {resultado.variacao ? (
                 <div className={`card-value ${num(resultado.variacao.real_delta)! >= 0 ? "status-ok" : "status-nok"}`}>
-                  {num(resultado.variacao.real_delta)! >= 0 ? "▲" : "▼"} {fmt(resultado.variacao.real_delta)}{" "}
+                  {num(resultado.variacao.real_delta)! >= 0 ? "▲" : "▼"} {formatValor(resultado.variacao.real_delta, unidadeSelecionada)}{" "}
                   <span style={{ fontSize: 14 }}>({fmtPct(resultado.variacao.real_delta_percentual)})</span>
                 </div>
               ) : (
@@ -276,10 +276,10 @@ export function ComparativoIndicador({ metas, anoAtual }: { metas: Meta[]; anoAt
                   {resultado.serie_meses.map((s) => (
                     <tr key={s.mes}>
                       <td>{MESES_LABEL[s.mes]}</td>
-                      <td>{fmt(s.periodo_principal.meta)}</td>
-                      <td>{fmt(s.periodo_principal.real)}</td>
-                      <td>{fmt(s.periodo_comparacao.meta)}</td>
-                      <td>{fmt(s.periodo_comparacao.real)}</td>
+                      <td>{formatValor(s.periodo_principal.meta, unidadeSelecionada)}</td>
+                      <td>{formatValor(s.periodo_principal.real, unidadeSelecionada)}</td>
+                      <td>{formatValor(s.periodo_comparacao.meta, unidadeSelecionada)}</td>
+                      <td>{formatValor(s.periodo_comparacao.real, unidadeSelecionada)}</td>
                     </tr>
                   ))}
                 </tbody>
