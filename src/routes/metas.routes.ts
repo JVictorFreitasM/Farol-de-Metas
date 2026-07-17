@@ -55,7 +55,9 @@ async function recalcularLinhaEPai(metaId: string, usuarioId: string) {
   });
 
   const dataMeses = Object.fromEntries([
-    ...MESES.map((mes) => [`meta${mes}`, agregado.metaPorMes[mes]]),
+    // metaPorMes === null (tipo_agregacao_meta="meta_manual"): não sobrescrever a Meta,
+    // que é digitada manualmente mês a mês pelo gerente — undefined faz o Prisma ignorar o campo.
+    ...MESES.map((mes) => [`meta${mes}`, agregado.metaPorMes ? agregado.metaPorMes[mes] : undefined]),
     ...MESES.map((mes) => [`real${mes}`, agregado.realPorMes[mes]]),
   ]);
 
@@ -536,7 +538,9 @@ metasRouter.put("/:id/meta", authorize("gerente", "admin"), async (req, res, nex
     const metaAtual = await prisma.meta.findUnique({ where: { id: req.params.id } });
     if (!metaAtual) throw notFound("Meta não encontrada");
 
-    if (metaAtual.agregaFilhos) {
+    // tipo_agregacao_meta="meta_manual": Meta é digitada mês a mês pelo gerente mesmo com
+    // agrega_filhos=true (só o Real é calculado automaticamente dos filhos, nesse caso).
+    if (metaAtual.agregaFilhos && metaAtual.tipoAgregacaoMeta !== "meta_manual") {
       throw conflict("Este IC agrega os valores dos filhos automaticamente e não pode ser editado diretamente.");
     }
 
@@ -609,61 +613,19 @@ const editarMetaManualSchema = z.object({
   meta_manual_acum: z.number(),
 });
 
+// tipo_agregacao_meta="meta_manual" agora significa que a Meta é digitada mês a mês
+// diretamente na tabela (via PUT /:id/meta) — meta_manual_acum não é mais usado no cálculo
+// de acum_meta (ver recalcularAgregadoIC), então esta rota só existe para dar um erro claro
+// a quem ainda tentar editar por aqui (ex: UI antiga em cache).
 metasRouter.put("/:id/meta-manual", authorize("gerente", "admin"), async (req, res, next) => {
   try {
-    const body = editarMetaManualSchema.parse(req.body);
-    const usuario = req.usuario!;
-
+    editarMetaManualSchema.parse(req.body);
     const meta = await prisma.meta.findUnique({ where: { id: req.params.id } });
     if (!meta) throw notFound("Meta não encontrada");
     if (!meta.agregaFilhos || meta.tipoAgregacaoMeta !== "meta_manual") {
       throw conflict("Este indicador não usa meta manual (tipo_agregacao_meta = meta_manual).");
     }
-
-    const valoresAntes = { ...meta };
-
-    await prisma.meta.update({
-      where: { id: meta.id },
-      data: { metaManualAcum: body.meta_manual_acum, atualizadoPor: usuario.id },
-    });
-
-    const filhos = await prisma.meta.findMany({ where: { paiId: meta.id, ativo: true } });
-    const agregado = recalcularAgregadoIC(filhos, {
-      tipoAgregacaoMeta: meta.tipoAgregacaoMeta,
-      tipoAgregacaoReal: meta.tipoAgregacaoReal,
-      metaManualAcum: new Prisma.Decimal(body.meta_manual_acum),
-    });
-
-    const dataMeses = Object.fromEntries([
-      ...MESES.map((mes) => [`meta${mes}`, agregado.metaPorMes[mes]]),
-      ...MESES.map((mes) => [`real${mes}`, agregado.realPorMes[mes]]),
-    ]);
-
-    const metaAtualizada = await prisma.meta.update({
-      where: { id: meta.id },
-      data: { ...dataMeses, acumMeta: agregado.acumMeta, acumReal: agregado.acumReal },
-      include: includeRelacoes,
-    });
-
-    await prisma.metaHistorico.create({
-      data: {
-        metasId: meta.id,
-        versao: (await prisma.metaHistorico.count({ where: { metasId: meta.id } })) + 1,
-        valoresAntes: JSON.parse(JSON.stringify(valoresAntes)),
-        valoresDepois: JSON.parse(JSON.stringify(metaAtualizada)),
-        alteradoPor: usuario.id,
-      },
-    });
-
-    await registrarAuditoria(req, {
-      acao: "UPDATE",
-      tabela: "metas",
-      registroId: meta.id,
-      setorId: meta.setorId,
-      detalhes: { campos_alterados: body },
-    });
-
-    res.json(serializeMeta(metaAtualizada));
+    throw conflict("A meta deste indicador é editada mês a mês diretamente na tabela, não como um valor único acumulado.");
   } catch (err) {
     next(err);
   }
@@ -784,7 +746,7 @@ metasRouter.delete("/:id", authorize("gerente", "admin"), async (req, res, next)
           metaManualAcum: pai.metaManualAcum,
         });
         const dataMeses = Object.fromEntries([
-          ...MESES.map((mes) => [`meta${mes}`, agregado.metaPorMes[mes]]),
+          ...MESES.map((mes) => [`meta${mes}`, agregado.metaPorMes ? agregado.metaPorMes[mes] : undefined]),
           ...MESES.map((mes) => [`real${mes}`, agregado.realPorMes[mes]]),
         ]);
         paiAtualizado = await prisma.meta.update({

@@ -102,7 +102,10 @@ export function MetasIndicadoresCards({
   const podeInativar = usuarioRole === "gerente";
   const podeEditarReal = (meta: Meta) =>
     !meta.agrega_filhos && (isGerente || (usuarioRole === "responsavel" && usuarioSetorId === meta.setor_id));
-  const podeEditarMeta = (meta: Meta) => !meta.agrega_filhos && isGerente;
+  // Meta segue editável mesmo com agrega_filhos=true quando tipo_agregacao_meta="meta_manual"
+  // (só o Real é calculado automaticamente dos filhos nesse caso — a Meta é manual, mês a mês).
+  const podeEditarMeta = (meta: Meta) =>
+    (!meta.agrega_filhos || meta.tipo_agregacao_meta === "meta_manual") && isGerente;
 
   const isExpandido = (chave: string): boolean => {
     if (chave in expandido) return expandido[chave];
@@ -272,7 +275,7 @@ export function MetasIndicadoresCards({
           ) : (
             <div
               className={`indicador-row-valor-numero ${metaEditavel ? "editable" : "locked"}`}
-              title={meta.agrega_filhos ? "Calculado automaticamente a partir dos IVs filhos" : undefined}
+              title={meta.agrega_filhos && meta.tipo_agregacao_meta !== "meta_manual" ? "Calculado automaticamente a partir dos IVs filhos" : undefined}
               onClick={() => iniciarEdicaoMeta(meta)}
             >
               {formatValor(meta.meses[mes].meta, meta.unidade)}

@@ -153,27 +153,35 @@ export interface ConfigAgregacaoIC {
 /**
  * Recalcula os campos agregados de um IC com agrega_filhos=true a partir dos IVs filhos,
  * respeitando regras separadas para Meta e Real (OS-009):
- * - tipo_agregacao_meta: soma | media | meta_manual (usa meta_manual_acum como valor fixo)
- * - tipo_agregacao_real: soma | media | proporcao_agregada (SUM(reais filhos) / SUM(metas filhos) * 100)
+ * - tipo_agregacao_meta: soma | media (calculado dos filhos) | meta_manual (Meta NÃO é
+ *   derivada dos filhos — o gerente digita mês a mês, como em qualquer indicador comum;
+ *   metaPorMes/acumMeta retornam `null`/`undefined` como sinal para o chamador não
+ *   sobrescrever os valores já existentes na linha do IC)
+ * - tipo_agregacao_real: soma | media | proporcao_agregada (SUM(reais filhos) / SUM(metas filhos))
  */
 export function recalcularAgregadoIC(
   filhos: Meta[],
   config: ConfigAgregacaoIC
 ): {
-  metaPorMes: Record<MesKey, Decimal | null>;
+  /** `null` quando tipo_agregacao_meta="meta_manual": Meta não deve ser sobrescrita. */
+  metaPorMes: Record<MesKey, Decimal | null> | null;
   realPorMes: Record<MesKey, Decimal | null>;
-  acumMeta: Decimal | null;
+  /** `undefined` quando tipo_agregacao_meta="meta_manual": Meta não deve ser sobrescrita
+   * (o Prisma ignora campos `undefined` num update, então o chamador pode repassar direto). */
+  acumMeta: Decimal | null | undefined;
   acumReal: Decimal | null;
 } {
-  const metaPorMes = {} as Record<MesKey, Decimal | null>;
+  const metaManual = config.tipoAgregacaoMeta === "meta_manual";
+  const metaPorMes = metaManual ? null : ({} as Record<MesKey, Decimal | null>);
   const realPorMes = {} as Record<MesKey, Decimal | null>;
 
   for (const mes of MESES) {
     const valoresMeta = filhos.map((f) => f[campoMeta(mes)] as Decimal | null).filter((v): v is Decimal => v != null);
     const valoresReal = filhos.map((f) => f[campoReal(mes)] as Decimal | null).filter((v): v is Decimal => v != null);
 
-    metaPorMes[mes] =
-      config.tipoAgregacaoMeta === "meta_manual" ? null : somaOuMedia(valoresMeta, config.tipoAgregacaoMeta);
+    if (metaPorMes) {
+      metaPorMes[mes] = somaOuMedia(valoresMeta, config.tipoAgregacaoMeta as "soma" | "media");
+    }
 
     realPorMes[mes] =
       config.tipoAgregacaoReal === "proporcao_agregada"
@@ -184,10 +192,7 @@ export function recalcularAgregadoIC(
   const acumMetaValores = filhos.map((f) => f.acumMeta).filter((v): v is Decimal => v != null);
   const acumRealValores = filhos.map((f) => f.acumReal).filter((v): v is Decimal => v != null);
 
-  const acumMeta =
-    config.tipoAgregacaoMeta === "meta_manual"
-      ? config.metaManualAcum
-      : somaOuMedia(acumMetaValores, config.tipoAgregacaoMeta);
+  const acumMeta = metaManual ? undefined : somaOuMedia(acumMetaValores, config.tipoAgregacaoMeta as "soma" | "media");
 
   const acumReal =
     config.tipoAgregacaoReal === "proporcao_agregada"

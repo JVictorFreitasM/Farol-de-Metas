@@ -12,20 +12,21 @@ const prisma = new PrismaClient()
  * criação de novos ICs com filhos — este script aplica essa configuração aos 3 ICs já
  * existentes (nos 3 anos) e persiste o valor calculado.
  *
- * A meta desses ICs (meta_ano ~0.98/0.95/1, unidade "%") é um alvo percentual fixo definido
- * pelo gerente, não uma soma dos valores brutos dos filhos (que estão em outras unidades/
- * escalas, ex: contagens, R$) — por isso tipo_agregacao_meta = "meta_manual", usando o
- * meta_ano do próprio IC como valor fixo (não o acum_meta antigo, que era apenas a soma das
- * 12 células mensais repetindo esse mesmo alvo — um artefato do formato antigo, não o alvo
- * real). Só o Real passa a ser calculado a partir dos filhos; a Meta continua um valor fixo
- * (as células mensais de Meta, que antes repetiam o mesmo valor todo mês, ficam em branco —
- * só o acumulado anual importa para esse tipo de indicador).
+ * A Meta desses ICs continua sendo digitada manualmente mês a mês pelo gerente, exatamente
+ * como antes — só o Real passa a ser calculado automaticamente a partir dos filhos. Por isso
+ * tipo_agregacao_meta = "meta_manual", que nesse sistema significa "a Meta não é derivada dos
+ * filhos" (ver recalcularAgregadoIC): a agregação nunca sobrescreve metaJan..Dez, e PUT
+ * /metas/:id/meta continua liberado para editar a Meta mês a mês mesmo com agrega_filhos=true.
+ * Este script restaura o valor mensal de Meta que já existia antes (repetindo meta_ano em
+ * todos os meses, igual ao dado original da planilha) como ponto de partida editável.
  *
- * tipo_acumulado também muda de "soma" para "media": os 12 meses de Real passam a guardar a
- * proporção agregada MENSAL dos filhos (uma razão ~1.0 = ~100%, não uma quantidade); somar 12
- * meses de ~100% daria ~1200% sem sentido em qualquer cálculo que re-acumule a partir dos meses
- * (ex: GET /metas/:id/comparativo, /acumulado-periodo) — média é a agregação correta para uma
- * série de percentuais mensais.
+ * tipo_acumulado muda de "soma" para "media": os 12 meses de Real passam a guardar a proporção
+ * agregada MENSAL dos filhos (uma razão ~1.0 = ~100%, não uma quantidade); somar 12 meses de
+ * ~100% daria ~1200% sem sentido em qualquer cálculo que re-acumule a partir dos meses (ex: GET
+ * /metas/:id/comparativo, /acumulado-periodo) — média é a agregação correta para uma série de
+ * percentuais mensais. A Meta (agora manual) usa a mesma tipo_acumulado, então também é
+ * mediada — como todo mês tem o mesmo valor (meta_ano repetido), a média bate com o próprio
+ * meta_ano.
  */
 const ICS_ALVO = ['Sistemas', 'Equipamentos e Serviços', 'Inventário']
 const ANOS = [2024, 2025, 2026]
@@ -42,18 +43,18 @@ async function main() {
         continue
       }
 
-      const metaManualAcum = ic.metaAno // alvo anual fixo do IC (ex: 0.98 = 98%), não o acum_meta antigo
       const filhos = await prisma.meta.findMany({ where: { paiId: ic.id, ativo: true } })
       const agregado = recalcularAgregadoIC(filhos, {
         tipoAgregacaoMeta: 'meta_manual',
         tipoAgregacaoReal: 'proporcao_agregada',
-        metaManualAcum,
+        metaManualAcum: null, // não usado mais nesse modo — meta é digitada mês a mês
       })
 
-      const dataMeses = Object.fromEntries([
-        ...MESES.map((mes) => [`meta${mes}`, agregado.metaPorMes[mes]]),
-        ...MESES.map((mes) => [`real${mes}`, agregado.realPorMes[mes]]),
-      ])
+      // Meta: restaura o valor mensal original (meta_ano repetido em todo mês), editável
+      // daqui pra frente via PUT /:id/meta — recalcularAgregadoIC nunca mexe nisso.
+      const metaMensal = ic.metaAno
+      const dataMesesMeta = Object.fromEntries(MESES.map((mes) => [`meta${mes}`, metaMensal ?? undefined]))
+      const dataMesesReal = Object.fromEntries(MESES.map((mes) => [`real${mes}`, agregado.realPorMes[mes]]))
 
       await prisma.meta.update({
         where: { id: ic.id },
@@ -62,16 +63,16 @@ async function main() {
           tipoAgregacaoMeta: 'meta_manual',
           tipoAgregacaoReal: 'proporcao_agregada',
           tipoAcumulado: 'media',
-          metaManualAcum,
-          ...dataMeses,
-          acumMeta: agregado.acumMeta,
+          metaManualAcum: null,
+          ...dataMesesMeta,
+          ...dataMesesReal,
+          acumMeta: metaMensal, // média de 12 meses iguais = o próprio valor
           acumReal: agregado.acumReal,
         },
       })
 
-      const percentual =
-        agregado.acumMeta && !agregado.acumMeta.isZero() ? agregado.acumReal?.div(agregado.acumMeta).mul(100).toDecimalPlaces(1) : null
-      console.log(`   ✓ "${nome}": acumMeta=${agregado.acumMeta} acumReal=${agregado.acumReal} (${percentual}% da meta)`)
+      const percentual = metaMensal && !metaMensal.isZero() ? agregado.acumReal?.div(metaMensal).mul(100).toDecimalPlaces(1) : null
+      console.log(`   ✓ "${nome}": metaMensal=${metaMensal} acumReal=${agregado.acumReal} (${percentual}% da meta)`)
     }
   }
 
