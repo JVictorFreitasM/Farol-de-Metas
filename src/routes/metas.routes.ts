@@ -101,6 +101,28 @@ metasRouter.get("/", async (req, res, next) => {
   }
 });
 
+const anosDisponiveisQuerySchema = z.object({
+  setor_id: z.string().uuid().optional(),
+});
+
+metasRouter.get("/anos-disponiveis", async (req, res, next) => {
+  try {
+    const query = anosDisponiveisQuerySchema.parse(req.query);
+    const setorId = resolveSetorId(req.usuario!, query.setor_id);
+
+    const linhas = await prisma.meta.findMany({
+      where: { setorId, ativo: true },
+      select: { ano: true },
+      distinct: ["ano"],
+      orderBy: { ano: "desc" },
+    });
+
+    res.json(linhas.map((l) => l.ano));
+  } catch (err) {
+    next(err);
+  }
+});
+
 metasRouter.patch("/:id/inativar", authorize("gerente"), async (req, res, next) => {
   try {
     const usuario = req.usuario!;
@@ -220,13 +242,16 @@ const comparativoQuerySchema = z.object({
   mes_fim: mesEnum.optional(),
   trimestre: z.coerce.number().int().min(1).max(4).optional(),
   semestre: z.coerce.number().int().min(1).max(2).optional(),
-  ano_comparacao: z.coerce.number().int().optional(),
+  // Lista de anos separados por vírgula (ex: "2023,2024"). Ausente = default (ano anterior).
+  // String vazia "" = nenhum ano de comparação (só o principal).
+  anos_comparacao: z.string().optional(),
 });
 
 /** Compara o acumulado de um indicador em um período (mês/intervalo/trimestre/semestre/ano)
- * com o mesmo período de outro ano. Como cada linha da tabela metas pertence a um único ano,
- * o "outro ano" é resolvido buscando uma linha com o mesmo (setor, indicador, ic_iv) — não há
- * um id estável entre anos, então o pareamento é por nome do indicador dentro do setor. */
+ * com o mesmo período de um ou mais anos adicionais. Como cada linha da tabela metas pertence
+ * a um único ano, cada "outro ano" é resolvido buscando uma linha com o mesmo (setor,
+ * indicador, ic_iv) — não há um id estável entre anos, então o pareamento é por nome do
+ * indicador dentro do setor. */
 metasRouter.get("/:id/comparativo", async (req, res, next) => {
   try {
     const usuario = req.usuario!;
@@ -251,86 +276,69 @@ metasRouter.get("/:id/comparativo", async (req, res, next) => {
       throw badRequest(err instanceof Error ? err.message : "Período inválido");
     }
 
-    const anoComparacao = query.ano_comparacao ?? meta.ano - 1;
-    const metaComparacao =
-      anoComparacao === meta.ano
-        ? null
-        : await prisma.meta.findFirst({
-            where: { setorId: meta.setorId, ano: anoComparacao, indicador: meta.indicador, icIv: meta.icIv, ativo: true },
-          });
+    const anosComparacao = [
+      ...new Set(
+        (query.anos_comparacao !== undefined
+          ? query.anos_comparacao
+              .split(",")
+              .map((s) => parseInt(s.trim(), 10))
+              .filter((n) => Number.isFinite(n))
+          : [meta.ano - 1]
+        ).filter((ano) => ano !== meta.ano)
+      ),
+    ];
 
-    const principal = calcularAcumuladoPeriodo(meta, intervalo.mesInicio, intervalo.mesFim);
-    const comparacao = metaComparacao ? calcularAcumuladoPeriodo(metaComparacao, intervalo.mesInicio, intervalo.mesFim) : null;
+    const metasComparacao =
+      anosComparacao.length > 0
+        ? await prisma.meta.findMany({
+            where: { setorId: meta.setorId, ano: { in: anosComparacao }, indicador: meta.indicador, icIv: meta.icIv, ativo: true },
+          })
+        : [];
 
-    const realDelta =
-      comparacao && principal.acumReal != null && comparacao.acumReal != null
-        ? principal.acumReal.minus(comparacao.acumReal)
-        : null;
-    const metaDelta =
-      comparacao && principal.acumMeta != null && comparacao.acumMeta != null
-        ? principal.acumMeta.minus(comparacao.acumMeta)
-        : null;
-    const realDeltaPercentual =
-      realDelta != null && comparacao?.acumReal != null && !comparacao.acumReal.isZero()
-        ? realDelta.div(comparacao.acumReal).mul(100).toDecimalPlaces(2)
-        : null;
-    const metaDeltaPercentual =
-      metaDelta != null && comparacao?.acumMeta != null && !comparacao.acumMeta.isZero()
-        ? metaDelta.div(comparacao.acumMeta).mul(100).toDecimalPlaces(2)
-        : null;
+    const metasPorAno = new Map<number, typeof meta>();
+    metasPorAno.set(meta.ano, meta);
+    for (const m of metasComparacao) metasPorAno.set(m.ano, m);
 
-    const serieMeses = MESES.map((mes) => ({
-      mes: mes.toLowerCase(),
-      periodo_principal: { meta: meta[campoMeta(mes)], real: meta[campoReal(mes)] },
-      periodo_comparacao: metaComparacao
-        ? { meta: metaComparacao[campoMeta(mes)], real: metaComparacao[campoReal(mes)] }
-        : { meta: null, real: null },
-    }));
+    // Mantém a ordem: principal primeiro, depois os anos de comparação encontrados (na ordem pedida).
+    const anos = [meta.ano, ...anosComparacao.filter((ano) => metasPorAno.has(ano))];
+
+    const periodos = anos.map((ano) => {
+      const linha = metasPorAno.get(ano)!;
+      const calc = calcularAcumuladoPeriodo(linha, intervalo.mesInicio, intervalo.mesFim);
+      return {
+        ano,
+        label: `${intervalo.label} ${ano}`,
+        meta_acum: calc.acumMeta,
+        real_acum: calc.acumReal,
+        percentual_execucao: calc.percentual,
+        status: calc.status,
+      };
+    });
+
+    const serieMeses = MESES.map((mes) => {
+      const valores: Record<number, { meta: unknown; real: unknown }> = {};
+      for (const ano of anos) {
+        const linha = metasPorAno.get(ano)!;
+        valores[ano] = { meta: linha[campoMeta(mes)], real: linha[campoReal(mes)] };
+      }
+      return { mes: mes.toLowerCase(), valores };
+    });
 
     await registrarAuditoria(req, {
       acao: "READ",
       tabela: "metas",
       registroId: meta.id,
       setorId: meta.setorId,
-      detalhes: {
-        evento: "comparativo_consultado",
-        periodo_tipo: query.periodo_tipo,
-        ano_principal: meta.ano,
-        ano_comparacao: anoComparacao,
-      },
+      detalhes: { evento: "comparativo_consultado", periodo_tipo: query.periodo_tipo, anos },
     });
 
     res.json({
       meta_id: meta.id,
       indicador: meta.indicador,
-      periodo_principal: {
-        label: `${intervalo.label} ${meta.ano}`,
-        tipo: query.periodo_tipo,
-        ano: meta.ano,
-        meta_acum: principal.acumMeta,
-        real_acum: principal.acumReal,
-        percentual_execucao: principal.percentual,
-        status: principal.status,
-      },
-      periodo_comparacao: comparacao
-        ? {
-            label: `${intervalo.label} ${anoComparacao}`,
-            tipo: query.periodo_tipo,
-            ano: anoComparacao,
-            meta_acum: comparacao.acumMeta,
-            real_acum: comparacao.acumReal,
-            percentual_execucao: comparacao.percentual,
-            status: comparacao.status,
-          }
-        : null,
-      variacao: comparacao
-        ? {
-            real_delta: realDelta,
-            real_delta_percentual: realDeltaPercentual,
-            meta_delta: metaDelta,
-            meta_delta_percentual: metaDeltaPercentual,
-          }
-        : null,
+      unidade: meta.unidade,
+      ano_principal: meta.ano,
+      anos,
+      periodos,
       serie_meses: serieMeses,
     });
   } catch (err) {

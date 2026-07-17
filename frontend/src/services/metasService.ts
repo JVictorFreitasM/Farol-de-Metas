@@ -108,13 +108,13 @@ export interface ComparativoPeriodoParams {
   mes_fim?: Mes;
   trimestre?: 1 | 2 | 3 | 4;
   semestre?: 1 | 2;
-  ano_comparacao?: number;
+  /** Anos extras para comparar, separados por vírgula (ex: "2023,2024"). "" = nenhum (só o principal). */
+  anos_comparacao?: string;
 }
 
-interface PeriodoResumo {
-  label: string;
-  tipo: PeriodoTipo;
+export interface PeriodoResumo {
   ano: number;
+  label: string;
   meta_acum: string | number | null;
   real_acum: string | number | null;
   percentual_execucao: string | number | null;
@@ -124,18 +124,16 @@ interface PeriodoResumo {
 export interface ComparativoResponse {
   meta_id: string;
   indicador: string;
-  periodo_principal: PeriodoResumo;
-  periodo_comparacao: PeriodoResumo | null;
-  variacao: {
-    real_delta: string | number | null;
-    real_delta_percentual: string | number | null;
-    meta_delta: string | number | null;
-    meta_delta_percentual: string | number | null;
-  } | null;
+  unidade: string;
+  ano_principal: number;
+  /** Anos incluídos na resposta, na ordem: principal primeiro, depois os de comparação. */
+  anos: number[];
+  /** Um resumo por ano, na mesma ordem de `anos`. */
+  periodos: PeriodoResumo[];
   serie_meses: {
     mes: Mes;
-    periodo_principal: { meta: string | number | null; real: string | number | null };
-    periodo_comparacao: { meta: string | number | null; real: string | number | null };
+    /** Chaveado pelo ano (como string, por causa de JSON) — um valor por ano em `anos`. */
+    valores: Record<string, { meta: string | number | null; real: string | number | null }>;
   }[];
 }
 
@@ -145,4 +143,8 @@ export function obterComparativo(id: string, params: ComparativoPeriodoParams): 
     if (value !== undefined) query.set(key, String(value));
   });
   return apiFetch<ComparativoResponse>(`/metas/${id}/comparativo?${query.toString()}`);
+}
+
+export function obterAnosDisponiveis(setorId: string): Promise<number[]> {
+  return apiFetch<number[]>(`/metas/anos-disponiveis?setor_id=${setorId}`);
 }
