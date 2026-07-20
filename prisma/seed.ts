@@ -7,6 +7,7 @@ const prisma = new PrismaClient()
 const SETORES = [
   { nome: 'Anny Moraes',       email: 'anny.moraes@company.com' },
   { nome: 'Davi',              email: 'davi@company.com' },
+  { nome: 'Francilane',        email: 'francilane@company.com' },
   { nome: 'Francisca Adriele', email: 'francisca.adriele@company.com' },
   { nome: 'Gustavo Borges',    email: 'gustavo.borges@company.com' },
   { nome: 'Maria Nadiane',     email: 'maria.nadiane@company.com' },
@@ -18,6 +19,7 @@ const USUARIOS = [
   { email: 'gerente@farol.com',          nome: 'Gerente',            senha: 'Gerente@2025',     role: 'gerente'     as const, setor: null },
   { email: 'anny@farol.com',             nome: 'Anny Moraes',        senha: 'Anny@2025',        role: 'responsavel' as const, setor: 'Anny Moraes' },
   { email: 'davi@farol.com',             nome: 'Davi',               senha: 'Davi@2025',        role: 'responsavel' as const, setor: 'Davi' },
+  { email: 'francilane@farol.com',       nome: 'Francilane',         senha: 'Francilane@2025',  role: 'responsavel' as const, setor: 'Francilane' },
   { email: 'francisca@farol.com',        nome: 'Francisca Adriele',  senha: 'Franc@2025',       role: 'responsavel' as const, setor: 'Francisca Adriele' },
   { email: 'gustavo@farol.com',          nome: 'Gustavo Borges',     senha: 'Gustavo@2025',     role: 'responsavel' as const, setor: 'Gustavo Borges' },
   { email: 'maria.nadiane@farol.com',    nome: 'Maria Nadiane',      senha: 'Maria@2025',       role: 'responsavel' as const, setor: 'Maria Nadiane' },
@@ -28,6 +30,7 @@ const USUARIOS = [
 const RESPONSAVEL_PARA_SETOR: Record<string, string> = {
   'Anny Moraes':       'Anny Moraes',
   'Davi':              'Davi',
+  'Francilane':        'Francilane',
   'Francisca Adriele': 'Francisca Adriele',
   'Gustavo Borges':    'Gustavo Borges',
   'Maria Nadiane':     'Maria Nadiane',
@@ -39,17 +42,22 @@ async function calcularAcumulado(m: typeof metasSeed[0]) {
   const metas  = meses.map(mes => m.meses[mes]?.meta).filter(v => v != null) as number[]
   const reais  = meses.map(mes => m.meses[mes]?.real).filter(v => v != null) as number[]
 
-  if (m.tipo_acumulado === 'media') {
-    return {
-      acumMeta: metas.length  ? metas.reduce((a, b) => a + b, 0)  / metas.length  : null,
-      acumReal: reais.length  ? reais.reduce((a, b) => a + b, 0)  / reais.length  : null,
-    }
-  }
-  // soma (default)
-  return {
-    acumMeta: metas.length ? metas.reduce((a, b) => a + b, 0) : null,
-    acumReal: reais.length ? reais.reduce((a, b) => a + b, 0) : null,
-  }
+  // OS-015: tipo_acumulado_meta/tipo_acumulado_real separados — "manual" em qualquer lado
+  // significa que o acumulado não vem da soma/média dos meses, vem do valor digitado direto.
+  const acumMeta = m.tipo_acumulado_meta === 'manual'
+    ? (m.acum_meta_manual ?? null)
+    : m.tipo_acumulado_meta === 'media'
+      ? (metas.length ? metas.reduce((a, b) => a + b, 0) / metas.length : null)
+      : (metas.length ? metas.reduce((a, b) => a + b, 0) : null)
+
+  const usaRealManual = m.tipo_acumulado_real === 'manual' || m.tipo_agregacao_real === 'real_manual'
+  const acumReal = usaRealManual
+    ? (m.acum_real_manual ?? null)
+    : m.tipo_acumulado_real === 'media'
+      ? (reais.length ? reais.reduce((a, b) => a + b, 0) / reais.length : null)
+      : (reais.length ? reais.reduce((a, b) => a + b, 0) : null)
+
+  return { acumMeta, acumReal }
 }
 
 const MESES_CAP = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'] as const
@@ -78,7 +86,7 @@ async function seedVendasDemo() {
   })
 
   const icExistente = await prisma.meta.findFirst({
-    where: { setorId: setor.id, ano: anoAtual, icIv: 'IC', indicador: 'Resultados do Mês' },
+    where: { setorId: setor.id, ano: anoAtual, indicador: { nome: 'Resultados do Mês', icIv: 'IC' } },
   })
   if (icExistente) {
     console.log('   ↷ Vendas Demo já possui dados de demonstração para este ano, pulando.')
@@ -94,18 +102,28 @@ async function seedVendasDemo() {
     }
   }
 
+  const indicadorIc = await prisma.indicador.upsert({
+    where: { nome_setorId: { nome: 'Resultados do Mês', setorId: setor.id } },
+    update: {},
+    create: {
+      setorId: setor.id,
+      icIv: 'IC',
+      nome: 'Resultados do Mês',
+      unidade: 'UN',
+      agregaFilhos: false,
+      tipoAcumuladoMeta: 'soma',
+      tipoAcumuladoReal: 'soma',
+    },
+  })
+
   const ic = await prisma.meta.create({
     data: {
       setorId: setor.id,
       ano: anoAtual,
       ordem: 0,
-      icIv: 'IC',
-      indicador: 'Resultados do Mês',
+      indicadorId: indicadorIc.id,
       responsavel: 'Gerente Vendas Demo',
-      unidade: 'UN',
       tipoMeta: 'maior_melhor',
-      agregaFilhos: false,
-      tipoAcumulado: 'soma',
     },
   })
 
@@ -129,6 +147,22 @@ async function seedVendasDemo() {
 
   for (let i = 0; i < ivs.length; i++) {
     const iv = ivs[i]
+
+    const indicadorIv = await prisma.indicador.upsert({
+      where: { nome_setorId: { nome: iv.indicador, setorId: setor.id } },
+      update: {},
+      create: {
+        setorId: setor.id,
+        icIv: 'IV',
+        paiId: indicadorIc.id,
+        nome: iv.indicador,
+        unidade: iv.unidade,
+        agregaFilhos: false,
+        tipoAcumuladoMeta: 'soma',
+        tipoAcumuladoReal: 'soma',
+      },
+    })
+
     const mesesData: Record<string, number | undefined> = {}
     if (mesAnterior) {
       mesesData[`meta${mesAnterior}`] = iv.metaAnteriorVal
@@ -144,14 +178,9 @@ async function seedVendasDemo() {
         setorId: setor.id,
         ano: anoAtual,
         ordem: i + 1,
-        icIv: 'IV',
-        paiId: ic.id,
-        indicador: iv.indicador,
+        indicadorId: indicadorIv.id,
         responsavel: 'Gerente Vendas Demo',
-        unidade: iv.unidade,
         tipoMeta: 'maior_melhor',
-        agregaFilhos: false,
-        tipoAcumulado: 'soma',
         ...mesesData,
         acumMeta,
         acumReal,
@@ -209,17 +238,18 @@ async function main() {
     return produto.id
   }
 
-  // 3. Metas — 2 passagens para resolver hierarquia
-  console.log('\n📊 Criando metas (2025)...')
+  // 3. Indicadores — 2 passagens para resolver hierarquia (OS-013: nome/unidade/hierarquia
+  // agora vivem em Indicador, fixos entre anos; Meta guarda só o que varia por ano)
+  console.log('\n📋 Criando indicadores...')
 
-  // IDs criados indexados por posição no array
-  const idsPorIdx: string[] = []
+  // IDs de Indicador criados indexados por posição no array de metasSeed
+  const indicadorIdsPorIdx: string[] = []
 
-  // Passagem 1: criar apenas ICs (sem paiId)
+  // Passagem 1: ICs (sem pai)
   for (let i = 0; i < metasSeed.length; i++) {
     const m = metasSeed[i]
     if (m.ic_iv !== 'IC') {
-      idsPorIdx.push('')
+      indicadorIdsPorIdx.push('')
       continue
     }
 
@@ -227,60 +257,34 @@ async function main() {
     const setorId = setorNome ? setorMap.get(setorNome) : undefined
     if (!setorId) {
       console.warn(`   ⚠️ Setor não encontrado para responsável "${m.responsavel}" — ${m.indicador}`)
-      idsPorIdx.push('')
+      indicadorIdsPorIdx.push('')
       continue
     }
 
-    const { acumMeta, acumReal } = await calcularAcumulado(m)
     const produtoId = await resolverProdutoId(m.produto, setorId)
 
-    const criado = await prisma.meta.create({
-      data: {
+    const indicador = await prisma.indicador.upsert({
+      where: { nome_setorId: { nome: m.indicador, setorId } },
+      update: {},
+      create: {
         setorId,
-        ano: 2025,
-        ordem: m.ordem,
         produtoId,
         icIv: 'IC',
-        indicador: m.indicador,
-        responsavel: m.responsavel,
+        nome: m.indicador,
         unidade: m.unidade,
-        tipoMeta: (m.tipo_meta ?? 'maior_melhor') as 'maior_melhor' | 'menor_melhor',
         agregaFilhos: m.agrega_filhos,
-        tipoAcumulado: m.tipo_acumulado,
-        metaAno: m.meta_ano ?? undefined,
-        metaJan: m.meses.jan?.meta ?? undefined,
-        metaFev: m.meses.fev?.meta ?? undefined,
-        metaMar: m.meses.mar?.meta ?? undefined,
-        metaAbr: m.meses.abr?.meta ?? undefined,
-        metaMai: m.meses.mai?.meta ?? undefined,
-        metaJun: m.meses.jun?.meta ?? undefined,
-        metaJul: m.meses.jul?.meta ?? undefined,
-        metaAgo: m.meses.ago?.meta ?? undefined,
-        metaSet: m.meses.set?.meta ?? undefined,
-        metaOut: m.meses.out?.meta ?? undefined,
-        metaNov: m.meses.nov?.meta ?? undefined,
-        metaDez: m.meses.dez?.meta ?? undefined,
-        realJan: m.meses.jan?.real ?? undefined,
-        realFev: m.meses.fev?.real ?? undefined,
-        realMar: m.meses.mar?.real ?? undefined,
-        realAbr: m.meses.abr?.real ?? undefined,
-        realMai: m.meses.mai?.real ?? undefined,
-        realJun: m.meses.jun?.real ?? undefined,
-        realJul: m.meses.jul?.real ?? undefined,
-        realAgo: m.meses.ago?.real ?? undefined,
-        realSet: m.meses.set?.real ?? undefined,
-        realOut: m.meses.out?.real ?? undefined,
-        realNov: m.meses.nov?.real ?? undefined,
-        realDez: m.meses.dez?.real ?? undefined,
-        acumMeta: acumMeta ?? undefined,
-        acumReal: acumReal ?? undefined,
+        tipoAcumuladoMeta: m.tipo_acumulado_meta,
+        tipoAcumuladoReal: m.tipo_acumulado_real,
+        tipoAgregacaoMeta: m.tipo_agregacao_meta ?? 'soma',
+        tipoAgregacaoReal: m.tipo_agregacao_real ?? 'soma',
+        realManualAcum: m.real_manual_acum ?? undefined,
       },
     })
-    idsPorIdx.push(criado.id)
+    indicadorIdsPorIdx.push(indicador.id)
     console.log(`   ✓ IC [${i}] ${m.indicador}`)
   }
 
-  // Passagem 2: criar IVs com paiId correto
+  // Passagem 2: IVs (com pai já resolvido)
   for (let i = 0; i < metasSeed.length; i++) {
     const m = metasSeed[i]
     if (m.ic_iv !== 'IV') continue
@@ -289,30 +293,51 @@ async function main() {
     const setorId = setorNome ? setorMap.get(setorNome) : undefined
     if (!setorId) {
       console.warn(`   ⚠️ Setor não encontrado para responsável "${m.responsavel}" — ${m.indicador}`)
-      idsPorIdx.push('')
       continue
     }
 
-    const paiId = m.pai_idx !== null ? idsPorIdx[m.pai_idx] : undefined
+    const paiId = m.pai_idx !== null ? indicadorIdsPorIdx[m.pai_idx] : undefined
     if (!paiId) {
       console.warn(`   ⚠️ Pai não encontrado para IV [${i}] ${m.indicador}`)
     }
 
+    const indicador = await prisma.indicador.upsert({
+      where: { nome_setorId: { nome: m.indicador, setorId } },
+      update: {},
+      create: {
+        setorId,
+        icIv: 'IV',
+        paiId: paiId || undefined,
+        nome: m.indicador,
+        unidade: m.unidade,
+        agregaFilhos: false,
+        tipoAcumuladoMeta: m.tipo_acumulado_meta,
+        tipoAcumuladoReal: m.tipo_acumulado_real,
+      },
+    })
+    indicadorIdsPorIdx[i] = indicador.id
+    console.log(`      ✓ IV [${i}] ${m.indicador}`)
+  }
+
+  // 4. Metas (2025) — uma linha por indicador, referenciando indicadorId
+  console.log('\n📊 Criando metas (2025)...')
+  for (let i = 0; i < metasSeed.length; i++) {
+    const m = metasSeed[i]
+    const setorNome = RESPONSAVEL_PARA_SETOR[m.responsavel]
+    const setorId = setorNome ? setorMap.get(setorNome) : undefined
+    const indicadorId = indicadorIdsPorIdx[i]
+    if (!setorId || !indicadorId) continue
+
     const { acumMeta, acumReal } = await calcularAcumulado(m)
 
-    const criado = await prisma.meta.create({
+    await prisma.meta.create({
       data: {
         setorId,
         ano: 2025,
         ordem: m.ordem,
-        icIv: 'IV',
-        paiId: paiId || undefined,
-        indicador: m.indicador,
+        indicadorId,
         responsavel: m.responsavel,
-        unidade: m.unidade,
         tipoMeta: (m.tipo_meta ?? 'maior_melhor') as 'maior_melhor' | 'menor_melhor',
-        agregaFilhos: false,
-        tipoAcumulado: m.tipo_acumulado,
         metaAno: m.meta_ano ?? undefined,
         metaJan: m.meses.jan?.meta ?? undefined,
         metaFev: m.meses.fev?.meta ?? undefined,
@@ -338,15 +363,16 @@ async function main() {
         realOut: m.meses.out?.real ?? undefined,
         realNov: m.meses.nov?.real ?? undefined,
         realDez: m.meses.dez?.real ?? undefined,
+        acumMetaManual: m.acum_meta_manual ?? undefined,
+        acumRealManual: m.acum_real_manual ?? undefined,
         acumMeta: acumMeta ?? undefined,
         acumReal: acumReal ?? undefined,
       },
     })
-    idsPorIdx.push(criado.id)
-    console.log(`      ✓ IV [${i}] ${m.indicador}`)
+    console.log(`   ✓ Meta [${i}] ${m.indicador}`)
   }
 
-  // 4. Setor de demonstração com metas pendentes/não batidas (mês atual)
+  // 5. Setor de demonstração com metas pendentes/não batidas (mês atual)
   console.log('\n🎯 Criando dados de demonstração (Vendas Demo)...')
   await seedVendasDemo()
 

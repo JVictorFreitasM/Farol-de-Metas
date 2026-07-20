@@ -1,5 +1,5 @@
 import { apiFetch } from "./api";
-import { IcIv, Meta, Mes, Setor, StatusMeta, TipoAgregacaoMeta, TipoAgregacaoReal, TipoMeta } from "../types";
+import { Meta, Mes, Setor, StatusMeta, TipoMeta } from "../types";
 
 export interface ListarMetasParams {
   setor_id?: string;
@@ -34,21 +34,15 @@ export interface MesesBody {
   dez?: number;
 }
 
+// OS-013: nome/unidade/hierarquia/regras de agregação já vivem no Indicador (criado à parte via
+// /indicadores) — criar uma Meta só referencia um indicador_id existente e os campos que variam
+// por ano.
 export interface CriarMetaBody {
-  setor_id: string;
+  indicador_id: string;
   ano: number;
   ordem?: number;
-  produto_id?: string;
-  ic_iv: IcIv;
-  pai_id?: string;
-  indicador: string;
   responsavel: string;
-  unidade: string;
   tipo_meta: TipoMeta;
-  agrega_filhos?: boolean;
-  tipo_acumulado?: "soma" | "media";
-  tipo_agregacao_meta?: TipoAgregacaoMeta;
-  tipo_agregacao_real?: TipoAgregacaoReal;
   meta_manual_acum?: number;
   meta_ano?: number;
   meta?: MesesBody;
@@ -58,7 +52,7 @@ export function criarMeta(body: CriarMetaBody) {
   return apiFetch(`/metas`, { method: "POST", body: JSON.stringify(body) });
 }
 
-export function editarMeta(id: string, body: { meta_ano?: number; meta?: MesesBody; produto_id?: string | null }) {
+export function editarMeta(id: string, body: { meta_ano?: number; meta?: MesesBody }) {
   return apiFetch(`/metas/${id}/meta`, { method: "PUT", body: JSON.stringify(body) });
 }
 
@@ -147,4 +141,26 @@ export function obterComparativo(id: string, params: ComparativoPeriodoParams): 
 
 export function obterAnosDisponiveis(setorId: string): Promise<number[]> {
   return apiFetch<number[]>(`/metas/anos-disponiveis?setor_id=${setorId}`);
+}
+
+export interface ImportarAnoBody {
+  ano_origem: number;
+  ano_destino: number;
+  copiar_metas: boolean;
+  copiar_produtos: boolean;
+  setor_id: string;
+  ajuste_percentual: number;
+  confirmar_sobrescrever: boolean;
+}
+
+export interface ImportarAnoResponse {
+  sucesso: boolean;
+  metas_importadas: number;
+  produtos_importados: number;
+  avisos: string[];
+  novas_meta_ids: string[];
+}
+
+export function importarAno(body: ImportarAnoBody): Promise<ImportarAnoResponse> {
+  return apiFetch<ImportarAnoResponse>(`/metas/importar-ano`, { method: "POST", body: JSON.stringify(body) });
 }

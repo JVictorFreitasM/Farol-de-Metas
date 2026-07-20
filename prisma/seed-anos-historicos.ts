@@ -9,6 +9,7 @@ const MESES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'o
 const RESPONSAVEL_PARA_SETOR: Record<string, string> = {
   'Anny Moraes': 'Anny Moraes',
   'Davi': 'Davi',
+  'Francilane': 'Francilane',
   'Francisca Adriele': 'Francisca Adriele',
   'Gustavo Borges': 'Gustavo Borges',
   'Maria Nadiane': 'Maria Nadiane',
@@ -33,20 +34,38 @@ function transformarValor(valor: number | null | undefined, fator: number, jitte
 
 async function calcularAcumulado(
   valoresPorMes: Record<string, { meta: number | null; real: number | null }>,
-  tipoAcumulado: 'soma' | 'media'
+  // OS-015: tipo_acumulado_meta/tipo_acumulado_real separados. Quando "manual", o acumulado
+  // desse lado vem do valor já transformado pro ano histórico, em vez da soma/média dos meses.
+  tipoAcumuladoMeta: 'soma' | 'media' | 'manual',
+  tipoAcumuladoReal: 'soma' | 'media' | 'manual',
+  acumMetaManualTransformado: number | null,
+  acumRealManualTransformado: number | null
 ) {
   const metas = MESES.map((mes) => valoresPorMes[mes]?.meta).filter((v): v is number => v != null)
   const reais = MESES.map((mes) => valoresPorMes[mes]?.real).filter((v): v is number => v != null)
   return {
-    acumMeta: metas.length ? metas.reduce((a, b) => a + b, 0) / (tipoAcumulado === 'media' ? metas.length : 1) : null,
-    acumReal: reais.length ? reais.reduce((a, b) => a + b, 0) / (tipoAcumulado === 'media' ? reais.length : 1) : null,
+    acumMeta:
+      tipoAcumuladoMeta === 'manual'
+        ? acumMetaManualTransformado
+        : metas.length
+        ? metas.reduce((a, b) => a + b, 0) / (tipoAcumuladoMeta === 'media' ? metas.length : 1)
+        : null,
+    acumReal:
+      tipoAcumuladoReal === 'manual'
+        ? acumRealManualTransformado
+        : reais.length
+        ? reais.reduce((a, b) => a + b, 0) / (tipoAcumuladoReal === 'media' ? reais.length : 1)
+        : null,
   }
 }
 
+// OS-013: nome/unidade/hierarquia agora vivem em Indicador (fixos, criados uma vez pelo
+// seed.ts principal para 2025). Este script só precisa criar as linhas de Meta (por ano)
+// apontando para os indicadores já existentes — não recria indicadores.
 async function popularAno(config: ConfigAno) {
   const jaExiste = await prisma.meta.findFirst({ where: { ano: config.ano } })
   if (jaExiste) {
-    console.log(`   ↷ Ano ${config.ano} já possui dados (ex: "${jaExiste.indicador}") — pulando para não duplicar.`)
+    console.log(`   ↷ Ano ${config.ano} já possui dados — pulando para não duplicar.`)
     return
   }
 
@@ -54,22 +73,6 @@ async function popularAno(config: ConfigAno) {
 
   const setores = await prisma.setor.findMany()
   const setorMap = new Map(setores.map((s) => [s.nome, s.id]))
-
-  const produtoMap = new Map<string, string>()
-  const admin = await prisma.usuario.findUniqueOrThrow({ where: { email: 'admin@farol.com' } })
-  async function resolverProdutoId(nome: string | null | undefined, setorId: string): Promise<string | undefined> {
-    if (!nome) return undefined
-    const chave = `${setorId}:${nome}`
-    const existente = produtoMap.get(chave)
-    if (existente) return existente
-    const produto = await prisma.produto.upsert({
-      where: { nome_setorId: { nome, setorId } },
-      update: {},
-      create: { nome, setorId, criadoPor: admin.id },
-    })
-    produtoMap.set(chave, produto.id)
-    return produto.id
-  }
 
   function transformarMeses(m: (typeof metasSeed)[number]) {
     const resultado: Record<string, { meta: number | null; real: number | null }> = {}
@@ -85,101 +88,42 @@ async function popularAno(config: ConfigAno) {
     return resultado
   }
 
-  const idsPorIdx: string[] = []
-
-  // Passagem 1: ICs
+  let contador = 0
   for (let i = 0; i < metasSeed.length; i++) {
     const m = metasSeed[i]
-    if (m.ic_iv !== 'IC') {
-      idsPorIdx.push('')
-      continue
-    }
-    const setorNome = RESPONSAVEL_PARA_SETOR[m.responsavel]
-    const setorId = setorNome ? setorMap.get(setorNome) : undefined
-    if (!setorId) {
-      idsPorIdx.push('')
-      continue
-    }
-
-    const meses = transformarMeses(m)
-    const { acumMeta, acumReal } = await calcularAcumulado(meses, m.tipo_acumulado)
-    const produtoId = await resolverProdutoId(m.produto, setorId)
-    const metaAnoTransformado = transformarValor(m.meta_ano, config.fatorMeta, config.jitter)
-
-    const criado = await prisma.meta.create({
-      data: {
-        setorId,
-        ano: config.ano,
-        ordem: m.ordem,
-        produtoId,
-        icIv: 'IC',
-        indicador: m.indicador,
-        responsavel: m.responsavel,
-        unidade: m.unidade,
-        tipoMeta: (m.tipo_meta ?? 'maior_melhor') as 'maior_melhor' | 'menor_melhor',
-        agregaFilhos: m.agrega_filhos,
-        tipoAcumulado: m.tipo_acumulado,
-        metaAno: metaAnoTransformado ?? undefined,
-        metaJan: meses.jan.meta ?? undefined,
-        metaFev: meses.fev.meta ?? undefined,
-        metaMar: meses.mar.meta ?? undefined,
-        metaAbr: meses.abr.meta ?? undefined,
-        metaMai: meses.mai.meta ?? undefined,
-        metaJun: meses.jun.meta ?? undefined,
-        metaJul: meses.jul.meta ?? undefined,
-        metaAgo: meses.ago.meta ?? undefined,
-        metaSet: meses.set.meta ?? undefined,
-        metaOut: meses.out.meta ?? undefined,
-        metaNov: meses.nov.meta ?? undefined,
-        metaDez: meses.dez.meta ?? undefined,
-        realJan: meses.jan.real ?? undefined,
-        realFev: meses.fev.real ?? undefined,
-        realMar: meses.mar.real ?? undefined,
-        realAbr: meses.abr.real ?? undefined,
-        realMai: meses.mai.real ?? undefined,
-        realJun: meses.jun.real ?? undefined,
-        realJul: meses.jul.real ?? undefined,
-        realAgo: meses.ago.real ?? undefined,
-        realSet: meses.set.real ?? undefined,
-        realOut: meses.out.real ?? undefined,
-        realNov: meses.nov.real ?? undefined,
-        realDez: meses.dez.real ?? undefined,
-        acumMeta: acumMeta ?? undefined,
-        acumReal: acumReal ?? undefined,
-      },
-    })
-    idsPorIdx.push(criado.id)
-  }
-  console.log(`   ✓ ${idsPorIdx.filter((id, i) => id && metasSeed[i].ic_iv === 'IC').length} ICs criados`)
-
-  // Passagem 2: IVs (com paiId correto)
-  let contadorIv = 0
-  for (let i = 0; i < metasSeed.length; i++) {
-    const m = metasSeed[i]
-    if (m.ic_iv !== 'IV') continue
     const setorNome = RESPONSAVEL_PARA_SETOR[m.responsavel]
     const setorId = setorNome ? setorMap.get(setorNome) : undefined
     if (!setorId) continue
 
-    const paiId = m.pai_idx !== null ? idsPorIdx[m.pai_idx] : undefined
+    const indicador = await prisma.indicador.findFirst({ where: { setorId, nome: m.indicador } })
+    if (!indicador) {
+      console.log(`   ⚠️ Indicador "${m.indicador}" não encontrado para o setor "${setorNome}", pulando.`)
+      continue
+    }
+
     const meses = transformarMeses(m)
-    const { acumMeta, acumReal } = await calcularAcumulado(meses, m.tipo_acumulado)
+    const acumMetaManualTransformado = transformarValor(m.acum_meta_manual ?? null, config.fatorMeta, config.jitter)
+    const acumRealManualTransformado = transformarValor(m.acum_real_manual ?? null, config.fatorReal, config.jitter)
+    const { acumMeta, acumReal } = await calcularAcumulado(
+      meses,
+      m.tipo_acumulado_meta,
+      m.tipo_acumulado_real,
+      acumMetaManualTransformado,
+      acumRealManualTransformado
+    )
     const metaAnoTransformado = transformarValor(m.meta_ano, config.fatorMeta, config.jitter)
 
-    const criado = await prisma.meta.create({
+    await prisma.meta.create({
       data: {
         setorId,
         ano: config.ano,
         ordem: m.ordem,
-        icIv: 'IV',
-        paiId: paiId || undefined,
-        indicador: m.indicador,
+        indicadorId: indicador.id,
         responsavel: m.responsavel,
-        unidade: m.unidade,
         tipoMeta: (m.tipo_meta ?? 'maior_melhor') as 'maior_melhor' | 'menor_melhor',
-        agregaFilhos: false,
-        tipoAcumulado: m.tipo_acumulado,
         metaAno: metaAnoTransformado ?? undefined,
+        acumMetaManual: acumMetaManualTransformado ?? undefined,
+        acumRealManual: acumRealManualTransformado ?? undefined,
         metaJan: meses.jan.meta ?? undefined,
         metaFev: meses.fev.meta ?? undefined,
         metaMar: meses.mar.meta ?? undefined,
@@ -208,10 +152,9 @@ async function popularAno(config: ConfigAno) {
         acumReal: acumReal ?? undefined,
       },
     })
-    idsPorIdx.push(criado.id)
-    contadorIv++
+    contador++
   }
-  console.log(`   ✓ ${contadorIv} IVs criados`)
+  console.log(`   ✓ ${contador} metas criadas`)
 }
 
 async function main() {

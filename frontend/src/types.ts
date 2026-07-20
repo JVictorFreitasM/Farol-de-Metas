@@ -3,7 +3,7 @@ export type IcIv = "IC" | "IV";
 export type TipoMeta = "maior_melhor" | "menor_melhor";
 export type StatusMeta = "ok" | "nok";
 export type TipoAgregacaoMeta = "soma" | "media" | "meta_manual";
-export type TipoAgregacaoReal = "soma" | "media" | "proporcao_agregada";
+export type TipoAgregacaoReal = "soma" | "media" | "proporcao_agregada" | "real_manual";
 export type AcaoAuditoria = "CREATE" | "READ" | "UPDATE" | "DELETE";
 
 export interface Usuario {
@@ -32,17 +32,40 @@ export interface Produto {
   criado_em: string;
   atualizado_em: string;
   atualizado_por: string | null;
-  _count?: { metas: number };
+  _count?: { indicadores: number };
 }
 
-export interface ProdutoComMetas extends Produto {
-  metas?: {
+export interface ProdutoComIndicadores extends Produto {
+  indicadores?: {
     id: string;
-    indicador: string;
-    tipoMeta: TipoMeta;
-    metaAno: string | number | null;
-    statusAcum: StatusMeta | null;
+    nome: string;
+    icIv: IcIv;
+    unidade: string;
   }[];
+}
+
+// OS-013: dados fixos do indicador (nome, unidade, hierarquia, regras de agregação) — não
+// variam por ano. Cada ano é uma linha em Meta apontando para o mesmo Indicador.
+export interface Indicador {
+  id: string;
+  setor_id: string;
+  nome: string;
+  ic_iv: IcIv;
+  unidade: string;
+  pai_id: string | null;
+  produto_id: string | null;
+  produto: string | null;
+  agrega_filhos: boolean;
+  // OS-015: separado por lado — nem sempre Meta e Real seguem a mesma regra de acumulação.
+  tipo_acumulado_meta: "soma" | "media" | "manual";
+  tipo_acumulado_real: "soma" | "media" | "manual";
+  tipo_agregacao_meta: TipoAgregacaoMeta;
+  tipo_agregacao_real: TipoAgregacaoReal;
+  // Valor fixo de real acumulado do IC agregador, usado quando tipo_agregacao_real=real_manual.
+  real_manual_acum: string | number | null;
+  ativo: boolean;
+  criado_em: string;
+  atualizado_em: string;
 }
 
 export const MESES = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"] as const;
@@ -73,6 +96,7 @@ export interface Meta {
   id: string;
   setor_id: string;
   nome_setor?: string;
+  indicador_id: string;
   pai_id: string | null;
   ano: number;
   ordem: number;
@@ -84,10 +108,14 @@ export interface Meta {
   unidade: string;
   tipo_meta: TipoMeta;
   agrega_filhos: boolean;
-  tipo_acumulado: "soma" | "media";
+  tipo_acumulado_meta: "soma" | "media" | "manual";
+  tipo_acumulado_real: "soma" | "media" | "manual";
   tipo_agregacao_meta: TipoAgregacaoMeta;
   tipo_agregacao_real: TipoAgregacaoReal;
+  real_manual_acum: string | number | null;
   meta_manual_acum: string | number | null;
+  acum_meta_manual: string | number | null;
+  acum_real_manual: string | number | null;
   meta_ano: string | number | null;
   meses: MesesMeta;
   acum_meta: string | number | null;

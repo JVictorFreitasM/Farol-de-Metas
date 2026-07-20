@@ -13,7 +13,7 @@ import {
   YAxis,
 } from "recharts";
 import { ComparativoResponse, obterAnosDisponiveis, obterComparativo, PeriodoTipo } from "../services/metasService";
-import { formatValor, paraEscalaExibicao } from "../lib/format";
+import { formatValor, formatValorEscalado, paraEscalaExibicao } from "../lib/format";
 import { Meta, MESES, MESES_LABEL, Mes } from "../types";
 
 const CORES_ANOS = ["#2563eb", "#ef4444", "#10b981", "#f59e0b", "#8b5cf6", "#06b6d4", "#ec4899"];
@@ -247,7 +247,7 @@ export function ComparativoIndicador({ metas, anoAtual }: { metas: Meta[]; anoAt
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="mes" />
                   <YAxis />
-                  <Tooltip />
+                  <Tooltip formatter={(value: number) => formatValorEscalado(value, unidadeSelecionada)} />
                   <Legend />
                   {resultado.anos.map((ano) => (
                     <Line
@@ -269,7 +269,7 @@ export function ComparativoIndicador({ metas, anoAtual }: { metas: Meta[]; anoAt
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="mes" />
                   <YAxis />
-                  <Tooltip />
+                  <Tooltip formatter={(value: number) => formatValorEscalado(value, unidadeSelecionada)} />
                   <Legend />
                   {resultado.anos.map((ano) => (
                     <Bar key={ano} dataKey={`Real ${ano}`} fill={corPorAno(ano)} radius={[4, 4, 0, 0]} />

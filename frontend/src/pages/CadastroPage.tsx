@@ -171,7 +171,6 @@ export function CadastroPage() {
             <CriarMetaModal
               setores={setores}
               setorIdInicial={setorId}
-              metasExistentes={metas}
               ano={ano}
               onSalvar={async (body) => {
                 await criarIndicador(body);

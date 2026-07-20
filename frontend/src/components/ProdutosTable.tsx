@@ -32,7 +32,7 @@ export function ProdutosTable({
           <tr key={p.id}>
             <td>{p.nome}</td>
             <td>{p.descricao ?? "-"}</td>
-            <td>{p._count?.metas ?? 0}</td>
+            <td>{p._count?.indicadores ?? 0}</td>
             <td className={p.status === "ativo" ? "acao-create" : "acao-delete"}>
               {p.status === "ativo" ? "Ativo" : "Inativo"}
             </td>

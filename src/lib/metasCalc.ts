@@ -1,5 +1,10 @@
-import { Meta, TipoAgregacaoMeta, TipoAgregacaoReal } from "@prisma/client";
+import { Indicador, Meta, TipoAgregacaoMeta, TipoAgregacaoReal } from "@prisma/client";
 import { Decimal } from "@prisma/client/runtime/library";
+
+// OS-013: tipo_acumulado e tipo_meta vivem em tabelas diferentes agora (Indicador guarda
+// tipo_acumulado, fixo entre anos; Meta guarda tipo_meta, que ainda varia por linha/ano) —
+// as funções de acumulado precisam da linha da Meta junto com o Indicador relacionado.
+export type MetaComIndicador = Meta & { indicador: Indicador };
 
 export const MESES = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"] as const;
 export type MesKey = (typeof MESES)[number];
@@ -15,18 +20,26 @@ function valoresPreenchidos(meta: Meta, campo: (mes: MesKey) => keyof Meta): Dec
   return MESES.map((mes) => meta[campo(mes)] as Decimal | null).filter((v): v is Decimal => v != null);
 }
 
-/** Recalcula acum_meta ou acum_real de uma linha a partir dos 12 meses, respeitando tipo_acumulado. */
-export function calcularAcumuladoLinha(meta: Meta, tipo: "meta" | "real"): Decimal | null {
+/** Recalcula acum_meta ou acum_real de uma linha a partir dos 12 meses, respeitando
+ * tipo_acumulado_meta/tipo_acumulado_real (separados — OS-015). Quando o lado em questão é
+ * "manual", os 12 meses continuam preenchidos normalmente (histórico), mas o acumulado final
+ * vem de meta.acumMetaManual/meta.acumRealManual em vez de ser calculado a partir deles. */
+export function calcularAcumuladoLinha(meta: MetaComIndicador, tipo: "meta" | "real"): Decimal | null {
+  const tipoAcumulado = tipo === "meta" ? meta.indicador.tipoAcumuladoMeta : meta.indicador.tipoAcumuladoReal;
+  if (tipoAcumulado === "manual") {
+    return (tipo === "meta" ? meta.acumMetaManual : meta.acumRealManual) ?? null;
+  }
+
   const valores = valoresPreenchidos(meta, tipo === "meta" ? campoMeta : campoReal);
   if (valores.length === 0) return null;
 
   const soma = valores.reduce((acc, v) => acc.plus(v), new Decimal(0));
-  return meta.tipoAcumulado === "media" ? soma.div(valores.length) : soma;
+  return tipoAcumulado === "media" ? soma.div(valores.length) : soma;
 }
 
 /** Calcula o acumulado (meta e real) de uma linha restrito a um intervalo [mesInicio, mesFim] de meses. */
 export function calcularAcumuladoPeriodo(
-  meta: Meta,
+  meta: MetaComIndicador,
   mesInicio: MesKey,
   mesFim: MesKey
 ): {
@@ -47,19 +60,26 @@ export function calcularAcumuladoPeriodo(
   const valoresMeta = mesesPeriodo.map((mes) => meta[campoMeta(mes)] as Decimal | null).filter((v): v is Decimal => v != null);
   const valoresReal = mesesPeriodo.map((mes) => meta[campoReal(mes)] as Decimal | null).filter((v): v is Decimal => v != null);
 
+  // tipo_acumulado_{meta,real}="manual": não há regra de rateio definida para acumular só uma
+  // parte do ano — o valor manual vale para o ano cheio (ver calcularAcumuladoLinha), então um
+  // período parcial fica sem acumulado calculável nesse lado.
   const acumMeta =
-    valoresMeta.length > 0
+    meta.indicador.tipoAcumuladoMeta === "manual"
+      ? null
+      : valoresMeta.length > 0
       ? (() => {
           const soma = valoresMeta.reduce((acc, v) => acc.plus(v), new Decimal(0));
-          return meta.tipoAcumulado === "media" ? soma.div(valoresMeta.length) : soma;
+          return meta.indicador.tipoAcumuladoMeta === "media" ? soma.div(valoresMeta.length) : soma;
         })()
       : null;
 
   const acumReal =
-    valoresReal.length > 0
+    meta.indicador.tipoAcumuladoReal === "manual"
+      ? null
+      : valoresReal.length > 0
       ? (() => {
           const soma = valoresReal.reduce((acc, v) => acc.plus(v), new Decimal(0));
-          return meta.tipoAcumulado === "media" ? soma.div(valoresReal.length) : soma;
+          return meta.indicador.tipoAcumuladoReal === "media" ? soma.div(valoresReal.length) : soma;
         })()
       : null;
 
@@ -148,16 +168,21 @@ export interface ConfigAgregacaoIC {
   tipoAgregacaoMeta: TipoAgregacaoMeta;
   tipoAgregacaoReal: TipoAgregacaoReal;
   metaManualAcum: Decimal | null;
+  /** OS-014: valor fixo de real acumulado, usado quando tipoAgregacaoReal="real_manual". */
+  realManualAcum: Decimal | null;
 }
 
 /**
  * Recalcula os campos agregados de um IC com agrega_filhos=true a partir dos IVs filhos,
- * respeitando regras separadas para Meta e Real (OS-009):
+ * respeitando regras separadas para Meta e Real (OS-009, OS-014):
  * - tipo_agregacao_meta: soma | media (calculado dos filhos) | meta_manual (Meta NÃO é
  *   derivada dos filhos — o gerente digita mês a mês, como em qualquer indicador comum;
  *   metaPorMes/acumMeta retornam `null`/`undefined` como sinal para o chamador não
  *   sobrescrever os valores já existentes na linha do IC)
- * - tipo_agregacao_real: soma | media | proporcao_agregada (SUM(reais filhos) / SUM(metas filhos))
+ * - tipo_agregacao_real: soma | media | proporcao_agregada (SUM(reais filhos) / SUM(metas
+ *   filhos)) | real_manual (Real NÃO é derivado dos filhos — digitado direto, mesmo padrão do
+ *   meta_manual; realPorMes/acumReal retornam `null`/`undefined` como sinal para o chamador
+ *   não sobrescrever os meses/acumulado já existentes na linha do IC)
  */
 export function recalcularAgregadoIC(
   filhos: Meta[],
@@ -165,15 +190,20 @@ export function recalcularAgregadoIC(
 ): {
   /** `null` quando tipo_agregacao_meta="meta_manual": Meta não deve ser sobrescrita. */
   metaPorMes: Record<MesKey, Decimal | null> | null;
-  realPorMes: Record<MesKey, Decimal | null>;
+  /** `null` quando tipo_agregacao_real="real_manual": Real não deve ser sobrescrito (os meses
+   * continuam sendo digitados manualmente, só o acumulado final é fixo). */
+  realPorMes: Record<MesKey, Decimal | null> | null;
   /** `undefined` quando tipo_agregacao_meta="meta_manual": Meta não deve ser sobrescrita
    * (o Prisma ignora campos `undefined` num update, então o chamador pode repassar direto). */
   acumMeta: Decimal | null | undefined;
-  acumReal: Decimal | null;
+  /** Quando tipo_agregacao_real="real_manual", retorna config.realManualAcum diretamente
+   * em vez de calcular a partir dos filhos. */
+  acumReal: Decimal | null | undefined;
 } {
   const metaManual = config.tipoAgregacaoMeta === "meta_manual";
+  const realManual = config.tipoAgregacaoReal === "real_manual";
   const metaPorMes = metaManual ? null : ({} as Record<MesKey, Decimal | null>);
-  const realPorMes = {} as Record<MesKey, Decimal | null>;
+  const realPorMes = realManual ? null : ({} as Record<MesKey, Decimal | null>);
 
   for (const mes of MESES) {
     const valoresMeta = filhos.map((f) => f[campoMeta(mes)] as Decimal | null).filter((v): v is Decimal => v != null);
@@ -183,10 +213,12 @@ export function recalcularAgregadoIC(
       metaPorMes[mes] = somaOuMedia(valoresMeta, config.tipoAgregacaoMeta as "soma" | "media");
     }
 
-    realPorMes[mes] =
-      config.tipoAgregacaoReal === "proporcao_agregada"
-        ? proporcaoAgregada(valoresReal, valoresMeta)
-        : somaOuMedia(valoresReal, config.tipoAgregacaoReal);
+    if (realPorMes) {
+      realPorMes[mes] =
+        config.tipoAgregacaoReal === "proporcao_agregada"
+          ? proporcaoAgregada(valoresReal, valoresMeta)
+          : somaOuMedia(valoresReal, config.tipoAgregacaoReal as "soma" | "media");
+    }
   }
 
   const acumMetaValores = filhos.map((f) => f.acumMeta).filter((v): v is Decimal => v != null);
@@ -194,10 +226,11 @@ export function recalcularAgregadoIC(
 
   const acumMeta = metaManual ? undefined : somaOuMedia(acumMetaValores, config.tipoAgregacaoMeta as "soma" | "media");
 
-  const acumReal =
-    config.tipoAgregacaoReal === "proporcao_agregada"
-      ? proporcaoAgregada(acumRealValores, acumMetaValores)
-      : somaOuMedia(acumRealValores, config.tipoAgregacaoReal);
+  const acumReal = realManual
+    ? config.realManualAcum
+    : config.tipoAgregacaoReal === "proporcao_agregada"
+    ? proporcaoAgregada(acumRealValores, acumMetaValores)
+    : somaOuMedia(acumRealValores, config.tipoAgregacaoReal as "soma" | "media");
 
   return { metaPorMes, realPorMes, acumMeta, acumReal };
 }

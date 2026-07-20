@@ -68,6 +68,7 @@ enum TipoAgregacaoReal {
   soma
   media
   proporcao_agregada
+  real_manual // OS-014: Real do IC não deriva dos filhos, é digitado direto (mesmo padrão do meta_manual)
 
   @@map("tipo_agregacao_real_type")
 }
@@ -80,10 +81,11 @@ model Setor {
   criadoEm     DateTime @default(now()) @map("criado_em")
   atualizadoEm DateTime @default(now()) @map("atualizado_em")
 
-  usuarios   Usuario[]
-  metas      Meta[]
-  produtos   Produto[]
-  auditorias Auditoria[]
+  usuarios    Usuario[]
+  metas       Meta[]
+  produtos    Produto[]
+  indicadores Indicador[]
+  auditorias  Auditoria[]
 
   @@index([nome])
   @@index([email])
@@ -91,26 +93,71 @@ model Setor {
 }
 
 model Produto {
-  id           String        @id @default(uuid()) @db.Uuid
-  nome         String        @db.VarChar(255)
-  descricao    String?
-  setorId      String        @map("setor_id") @db.Uuid
-  setor        Setor         @relation(fields: [setorId], references: [id])
-  status       StatusProduto @default(ativo)
-  criadoPor    String        @map("criado_por") @db.Uuid
-  criadoPorUsuario Usuario   @relation("ProdutoCriadoPor", fields: [criadoPor], references: [id])
-  criadoEm     DateTime      @default(now()) @map("criado_em")
-  atualizadoEm DateTime      @default(now()) @map("atualizado_em")
-  atualizadoPor String?      @map("atualizado_por") @db.Uuid
-  atualizadoPorUsuario Usuario? @relation("ProdutoAtualizadoPor", fields: [atualizadoPor], references: [id])
+  id                   String        @id @default(uuid()) @db.Uuid
+  nome                 String        @db.VarChar(255)
+  descricao            String?
+  setorId              String        @map("setor_id") @db.Uuid
+  setor                Setor         @relation(fields: [setorId], references: [id])
+  status               StatusProduto @default(ativo)
+  criadoPor            String        @map("criado_por") @db.Uuid
+  criadoPorUsuario     Usuario       @relation("ProdutoCriadoPor", fields: [criadoPor], references: [id])
+  criadoEm             DateTime      @default(now()) @map("criado_em")
+  atualizadoEm         DateTime      @default(now()) @map("atualizado_em")
+  atualizadoPor        String?       @map("atualizado_por") @db.Uuid
+  atualizadoPorUsuario Usuario?      @relation("ProdutoAtualizadoPor", fields: [atualizadoPor], references: [id])
 
-  metas Meta[]
+  indicadores Indicador[]
 
   @@unique([nome, setorId])
   @@index([setorId, status])
   @@index([nome])
   @@index([criadoEm])
   @@map("produtos")
+}
+
+// OS-013: dados fixos do indicador (nome, unidade, hierarquia, regras de agregação) —
+// não variam por ano. Cada ano é uma linha em Meta apontando para o mesmo Indicador.
+model Indicador {
+  id      String @id @default(uuid()) @db.Uuid
+  setorId String @map("setor_id") @db.Uuid
+  setor   Setor  @relation(fields: [setorId], references: [id])
+
+  nome    String @db.VarChar(500)
+  icIv    IcIv   @map("ic_iv")
+  unidade String @db.VarChar(50)
+
+  paiId  String?     @map("pai_id") @db.Uuid
+  pai    Indicador?  @relation("IndicadorHierarquia", fields: [paiId], references: [id])
+  filhos Indicador[] @relation("IndicadorHierarquia")
+
+  produtoId String?  @map("produto_id") @db.Uuid
+  produto   Produto? @relation(fields: [produtoId], references: [id])
+
+  agregaFilhos      Boolean           @default(false) @map("agrega_filhos")
+  // OS-015: "soma" | "media" | "manual", em separado pro lado Meta e pro lado Real — nem
+  // sempre os dois lados de um indicador seguem a mesma regra de acumulação. "manual" significa
+  // que os 12 meses continuam preenchidos normalmente (histórico/rastreio), mas o acumulado
+  // final vem de meta.acumMetaManual/meta.acumRealManual em vez de ser calculado a partir deles
+  // (ver metasCalc.calcularAcumuladoLinha).
+  tipoAcumuladoMeta String            @default("soma") @map("tipo_acumulado_meta") @db.VarChar(10)
+  tipoAcumuladoReal String            @default("soma") @map("tipo_acumulado_real") @db.VarChar(10)
+  tipoAgregacaoMeta TipoAgregacaoMeta @default(soma) @map("tipo_agregacao_meta")
+  tipoAgregacaoReal TipoAgregacaoReal @default(soma) @map("tipo_agregacao_real")
+  // OS-015: valor fixo de real acumulado do IC, usado quando tipo_agregacao_real = real_manual
+  // (mesmo padrão do metaManualAcum, mas para o lado do Real de um IC agregador).
+  realManualAcum    Decimal?          @map("real_manual_acum") @db.Decimal(15, 4)
+
+  ativo        Boolean  @default(true)
+  criadoEm     DateTime @default(now()) @map("criado_em")
+  atualizadoEm DateTime @default(now()) @map("atualizado_em")
+
+  metas Meta[]
+
+  @@unique([nome, setorId])
+  @@index([setorId])
+  @@index([paiId])
+  @@index([produtoId])
+  @@map("indicadores")
 }
 
 model Usuario {
@@ -126,12 +173,12 @@ model Usuario {
   criadoEm     DateTime  @default(now()) @map("criado_em")
   atualizadoEm DateTime  @default(now()) @map("atualizado_em")
 
-  metasAtualizadas Meta[]          @relation("MetaAtualizadoPor")
-  metasInativadas  Meta[]          @relation("MetaInativadoPor")
-  historicos       MetaHistorico[]
-  auditorias       Auditoria[]
-  produtosCriados     Produto[] @relation("ProdutoCriadoPor")
-  produtosAtualizados Produto[] @relation("ProdutoAtualizadoPor")
+  metasAtualizadas    Meta[]          @relation("MetaAtualizadoPor")
+  metasInativadas     Meta[]          @relation("MetaInativadoPor")
+  historicos          MetaHistorico[]
+  auditorias          Auditoria[]
+  produtosCriados     Produto[]       @relation("ProdutoCriadoPor")
+  produtosAtualizados Produto[]       @relation("ProdutoAtualizadoPor")
 
   @@index([email])
   @@index([setorId])
@@ -141,40 +188,33 @@ model Usuario {
 
 model Meta {
   id      String @id @default(uuid()) @db.Uuid
+  // Denormalizado a partir de indicador.setorId — mantido direto na linha para queries de
+  // dashboard (filtro por setor+ano) sem precisar de join em indicadores.
   setorId String @map("setor_id") @db.Uuid
   setor   Setor  @relation(fields: [setorId], references: [id])
   ano     Int
 
+  // OS-013: nome, unidade, hierarquia e regras de agregação vivem em Indicador (fixos,
+  // não variam por ano). Meta guarda só o que muda ano a ano.
+  indicadorId String    @map("indicador_id") @db.Uuid
+  indicador   Indicador @relation(fields: [indicadorId], references: [id])
+
   // Ordem de exibição (preserva sequência do Excel)
   ordem Int @default(0)
 
-  // Agrupador visual — só preenchido no IC principal do grupo
-  produtoId String?  @map("produto_id") @db.Uuid
-  produto   Produto? @relation(fields: [produtoId], references: [id])
-
-  // Hierarquia
-  icIv  IcIv    @map("ic_iv")
-  paiId String? @map("pai_id") @db.Uuid
-  pai   Meta?   @relation("MetaHierarquia", fields: [paiId], references: [id])
-  filhos Meta[] @relation("MetaHierarquia")
-
-  // Dados do indicador
-  indicador   String   @db.VarChar(500)
   responsavel String   @db.VarChar(255)
-  unidade     String   @db.VarChar(50)
   tipoMeta    TipoMeta @map("tipo_meta")
 
-  // Comportamento do IC
-  // agrega_filhos: true = meta/real calculados da soma dos IVs filhos
-  agregaFilhos  Boolean @default(false) @map("agrega_filhos")
-  // tipo_acumulado: 'soma' | 'media' — acumula os 12 meses da PRÓPRIA linha (não usado quando agrega_filhos=true)
-  tipoAcumulado String  @default("soma") @map("tipo_acumulado") @db.VarChar(10)
+  // Valor fixo de meta acumulada, usado quando indicador.tipo_agregacao_meta = meta_manual
+  // (IC agregador — Meta não deriva dos filhos). Hoje vestigial: a Meta desses ICs é digitada
+  // mês a mês (ver PUT /:id/meta), e o acumulado vem de acumMetaManual/tipo_acumulado_meta.
+  metaManualAcum Decimal? @map("meta_manual_acum") @db.Decimal(15, 4)
 
-  // OS-009: regras de agregação a partir dos filhos — só relevantes quando agrega_filhos=true
-  tipoAgregacaoMeta TipoAgregacaoMeta @default(soma) @map("tipo_agregacao_meta")
-  tipoAgregacaoReal TipoAgregacaoReal @default(soma) @map("tipo_agregacao_real")
-  // Valor fixo de meta acumulada, usado quando tipo_agregacao_meta = meta_manual
-  metaManualAcum    Decimal?          @map("meta_manual_acum") @db.Decimal(15, 4)
+  // OS-015: valor fixo de acumulado, usado quando indicador.tipo_acumulado_meta/tipo_acumulado_real
+  // = "manual". Os 12 meses continuam preenchidos normalmente (histórico/rastreio); este campo
+  // apenas sobrescreve o que seria soma/média deles no acumulado final.
+  acumMetaManual Decimal? @map("acum_meta_manual") @db.Decimal(15, 4)
+  acumRealManual Decimal? @map("acum_real_manual") @db.Decimal(15, 4)
 
   // Meta anual (definida pelo gerente)
   metaAno Decimal? @map("meta_ano") @db.Decimal(15, 4)
@@ -241,24 +281,23 @@ model Meta {
   statusAcum StatusMeta? @map("status_acum")
 
   // Controle
-  criadoEm            DateTime  @default(now()) @map("criado_em")
-  atualizadoEm        DateTime  @default(now()) @map("atualizado_em")
-  atualizadoPor       String?   @map("atualizado_por") @db.Uuid
+  criadoEm             DateTime @default(now()) @map("criado_em")
+  atualizadoEm         DateTime @default(now()) @map("atualizado_em")
+  atualizadoPor        String?  @map("atualizado_por") @db.Uuid
   atualizadoPorUsuario Usuario? @relation("MetaAtualizadoPor", fields: [atualizadoPor], references: [id])
 
   // Inativação (soft delete) — ver OS-008
-  ativo             Boolean   @default(true)
-  inativadoEm       DateTime? @map("inativado_em")
-  inativadoPor      String?   @map("inativado_por") @db.Uuid
-  inativadoPorUsuario Usuario? @relation("MetaInativadoPor", fields: [inativadoPor], references: [id])
+  ativo               Boolean   @default(true)
+  inativadoEm         DateTime? @map("inativado_em")
+  inativadoPor        String?   @map("inativado_por") @db.Uuid
+  inativadoPorUsuario Usuario?  @relation("MetaInativadoPor", fields: [inativadoPor], references: [id])
 
   historicos MetaHistorico[]
 
   @@index([setorId])
   @@index([ano])
-  @@index([icIv])
-  @@index([paiId])
-  @@index([produtoId])
+  @@index([indicadorId])
+  @@index([indicadorId, ano])
   @@index([setorId, ano])
   @@index([setorId, ano, ordem])
   @@index([ativo])
@@ -267,16 +306,16 @@ model Meta {
 }
 
 model MetaHistorico {
-  id            String   @id @default(uuid()) @db.Uuid
-  metasId       String   @map("metas_id") @db.Uuid
-  meta          Meta     @relation(fields: [metasId], references: [id])
-  versao        Int
-  valoresAntes  Json?    @map("valores_antes")
-  valoresDepois Json     @map("valores_depois")
-  alteradoPor   String?  @map("alterado_por") @db.Uuid
+  id                 String   @id @default(uuid()) @db.Uuid
+  metasId            String   @map("metas_id") @db.Uuid
+  meta               Meta     @relation(fields: [metasId], references: [id])
+  versao             Int
+  valoresAntes       Json?    @map("valores_antes")
+  valoresDepois      Json     @map("valores_depois")
+  alteradoPor        String?  @map("alterado_por") @db.Uuid
   alteradoPorUsuario Usuario? @relation(fields: [alteradoPor], references: [id])
-  alteradoEm    DateTime @default(now()) @map("alterado_em")
-  motivo        String?
+  alteradoEm         DateTime @default(now()) @map("alterado_em")
+  motivo             String?
 
   @@index([metasId])
   @@index([alteradoEm])

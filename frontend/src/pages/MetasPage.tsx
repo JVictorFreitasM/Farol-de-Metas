@@ -6,9 +6,11 @@ import { MetasDashboard } from "../components/MetasDashboard";
 import { ComparativoIndicador } from "../components/ComparativoIndicador";
 import { useAuth } from "../hooks/useAuth";
 import { useMetas } from "../hooks/useMetas";
+import { useImportacao } from "../hooks/useImportacao";
 import { gerarOpcoesAno, useAnoSelecionado } from "../hooks/useAnoSelecionado";
 import { useSetorSelecionado } from "../hooks/useSetorSelecionado";
-import { AcumuladoPeriodoResponse, obterAcumuladoPeriodo } from "../services/metasService";
+import { AcumuladoPeriodoResponse, obterAcumuladoPeriodo, obterAnosDisponiveis } from "../services/metasService";
+import { ImportarMetasModal } from "../components/ImportarMetasModal";
 import { MESES, MESES_LABEL, Mes } from "../types";
 
 type Aba = "tabela" | "dashboard" | "comparativo";
@@ -26,12 +28,23 @@ export function MetasPage() {
   const [periodoInicio, setPeriodoInicio] = useState<Mes | "">("");
   const [periodoFim, setPeriodoFim] = useState<Mes | "">("");
   const [acumuladosPeriodo, setAcumuladosPeriodo] = useState<Record<string, AcumuladoPeriodoResponse>>({});
+  const [mostrarImportar, setMostrarImportar] = useState(false);
+  const [anosDisponiveis, setAnosDisponiveis] = useState<number[]>([]);
 
   const { metas, setores, loading, recarregar, salvarMeta, salvarReal, salvarMetaManual, deletar, inativar, ativar } = useMetas({
     ano,
     setor_id: setorId,
     incluir_inativos: mostrarInativos,
   });
+  const { importar } = useImportacao();
+
+  useEffect(() => {
+    if (!setorId) {
+      setAnosDisponiveis([]);
+      return;
+    }
+    obterAnosDisponiveis(setorId).then(setAnosDisponiveis).catch(() => setAnosDisponiveis([]));
+  }, [setorId]);
 
   useEffect(() => {
     if (!periodoInicio || !periodoFim || metas.length === 0) {
@@ -125,7 +138,13 @@ export function MetasPage() {
 
   const toolbar = (
     <div className="metas-toolbar">
-      <span />
+      <span>
+        {isGerente && setorId && (
+          <button className="btn-secondary" onClick={() => setMostrarImportar(true)}>
+            Importar Metas do Ano Anterior
+          </button>
+        )}
+      </span>
       <button className="btn-secondary" onClick={recarregar}>↻ Atualizar</button>
     </div>
   );
@@ -168,6 +187,19 @@ export function MetasPage() {
         </>
       )}
       {!loading && setorId && aba === "comparativo" && <ComparativoIndicador metas={metas} anoAtual={ano} />}
+
+      {mostrarImportar && setorId && (
+        <ImportarMetasModal
+          setorId={setorId}
+          anoAtual={ano}
+          anosDisponiveis={anosDisponiveis}
+          onImportar={importar}
+          onFechar={() => {
+            setMostrarImportar(false);
+            recarregar();
+          }}
+        />
+      )}
     </AppLayout>
   );
 }

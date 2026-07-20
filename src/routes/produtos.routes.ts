@@ -10,7 +10,7 @@ import { parsePagination, paginatedResponse } from "../lib/pagination";
 export const produtosRouter = Router();
 produtosRouter.use(authenticate);
 
-function serializeProduto(produto: Prisma.ProdutoGetPayload<{ include: { _count: { select: { metas: true } } } }>) {
+function serializeProduto(produto: Prisma.ProdutoGetPayload<{ include: { _count: { select: { indicadores: true } } } }>) {
   return {
     id: produto.id,
     nome: produto.nome,
@@ -21,7 +21,7 @@ function serializeProduto(produto: Prisma.ProdutoGetPayload<{ include: { _count:
     criado_em: produto.criadoEm,
     atualizado_em: produto.atualizadoEm,
     atualizado_por: produto.atualizadoPor,
-    _count: { metas: produto._count.metas },
+    _count: { indicadores: produto._count.indicadores },
   };
 }
 
@@ -48,7 +48,7 @@ produtosRouter.get("/", async (req, res, next) => {
     const [produtos, total] = await Promise.all([
       prisma.produto.findMany({
         where,
-        include: { _count: { select: { metas: true } } },
+        include: { _count: { select: { indicadores: true } } },
         orderBy: { nome: "asc" },
         skip,
         take: limite,
@@ -67,15 +67,15 @@ produtosRouter.get("/:id", async (req, res, next) => {
     const produto = await prisma.produto.findUnique({
       where: { id: req.params.id },
       include: {
-        _count: { select: { metas: true } },
-        metas: {
-          select: { id: true, indicador: true, tipoMeta: true, metaAno: true, statusAcum: true },
+        _count: { select: { indicadores: true } },
+        indicadores: {
+          select: { id: true, nome: true, icIv: true, unidade: true },
         },
       },
     });
     if (!produto) throw notFound("Produto não encontrado");
 
-    res.json({ ...serializeProduto(produto), metas: produto.metas });
+    res.json({ ...serializeProduto(produto), indicadores: produto.indicadores });
   } catch (err) {
     next(err);
   }
@@ -105,7 +105,7 @@ produtosRouter.post("/", authorize("gerente"), async (req, res, next) => {
         status: body.status,
         criadoPor: usuario.id,
       },
-      include: { _count: { select: { metas: true } } },
+      include: { _count: { select: { indicadores: true } } },
     });
 
     await registrarAuditoria(req, {
@@ -152,7 +152,7 @@ produtosRouter.put("/:id", authorize("gerente", "admin"), async (req, res, next)
         atualizadoPor: usuario.id,
         atualizadoEm: new Date(),
       },
-      include: { _count: { select: { metas: true } } },
+      include: { _count: { select: { indicadores: true } } },
     });
 
     await registrarAuditoria(req, {

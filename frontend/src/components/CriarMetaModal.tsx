@@ -1,22 +1,22 @@
 import { useState } from "react";
 import { toast } from "react-toastify";
 import { CriarMetaBody } from "../services/metasService";
+import { criarIndicador } from "../services/indicadoresService";
 import { useProdutos } from "../hooks/useProdutos";
-import { IcIv, Meta, Setor, TipoAgregacaoMeta, TipoAgregacaoReal, TipoMeta } from "../types";
+import { useIndicadores } from "../hooks/useIndicadores";
+import { IcIv, Setor, TipoAgregacaoMeta, TipoAgregacaoReal, TipoMeta } from "../types";
 
 const UNIDADES = ["%", "R$", "UN", "Tons", "nº", "D", "DD", "H", "Q", "CDI"];
 
 export function CriarMetaModal({
   setores,
   setorIdInicial,
-  metasExistentes,
   ano,
   onSalvar,
   onFechar,
 }: {
   setores: Setor[];
   setorIdInicial?: string;
-  metasExistentes: Meta[];
   ano: number;
   onSalvar: (body: CriarMetaBody) => Promise<void>;
   onFechar: () => void;
@@ -37,7 +37,8 @@ export function CriarMetaModal({
   const [produtoId, setProdutoId] = useState("");
   const [salvando, setSalvando] = useState(false);
 
-  const icsDoSetor = metasExistentes.filter((m) => m.ic_iv === "IC" && m.ativo && (!setorId || m.setor_id === setorId));
+  const { indicadores } = useIndicadores({ setor_id: setorId });
+  const icsDoSetor = indicadores.filter((i) => i.ic_iv === "IC" && i.ativo);
   const { produtos } = useProdutos({ setor_id: setorId, status: "ativo" });
 
   const handleSalvar = async () => {
@@ -51,23 +52,30 @@ export function CriarMetaModal({
 
     setSalvando(true);
     try {
-      await onSalvar({
+      // OS-013: indicador (nome/hierarquia/unidade/agregação) e meta (valores do ano) são
+      // entidades separadas agora — criamos o indicador primeiro e referenciamos seu id na meta.
+      const novoIndicador = await criarIndicador({
         setor_id: setorId,
-        ano,
+        nome: indicador.trim(),
         ic_iv: icIv,
-        pai_id: icIv === "IV" ? paiId : undefined,
-        indicador: indicador.trim(),
-        responsavel: responsavel.trim(),
         unidade,
-        tipo_meta: tipoMeta,
+        pai_id: icIv === "IV" ? paiId : undefined,
+        produto_id: icIv === "IC" && produtoId ? produtoId : undefined,
         agrega_filhos: icIv === "IC" ? agregaFilhos : undefined,
-        tipo_acumulado: tipoAcumulado,
+        tipo_acumulado_meta: tipoAcumulado,
+        tipo_acumulado_real: tipoAcumulado,
         tipo_agregacao_meta: icIv === "IC" && agregaFilhos ? tipoAgregacaoMeta : undefined,
         tipo_agregacao_real: icIv === "IC" && agregaFilhos ? tipoAgregacaoReal : undefined,
+      });
+
+      await onSalvar({
+        indicador_id: novoIndicador.id,
+        ano,
+        responsavel: responsavel.trim(),
+        tipo_meta: tipoMeta,
         meta_manual_acum:
           icIv === "IC" && agregaFilhos && tipoAgregacaoMeta === "meta_manual" ? Number(metaManualAcum) : undefined,
         meta_ano: metaAno ? Number(metaAno) : undefined,
-        produto_id: icIv === "IC" && produtoId ? produtoId : undefined,
       });
     } finally {
       setSalvando(false);
@@ -104,7 +112,7 @@ export function CriarMetaModal({
               <select className="form-input" value={paiId} onChange={(e) => setPaiId(e.target.value)}>
                 <option value="">Selecione...</option>
                 {icsDoSetor.map((ic) => (
-                  <option key={ic.id} value={ic.id}>{ic.indicador}</option>
+                  <option key={ic.id} value={ic.id}>{ic.nome}</option>
                 ))}
               </select>
             </label>

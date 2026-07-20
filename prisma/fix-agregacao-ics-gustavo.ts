@@ -27,6 +27,10 @@ const prisma = new PrismaClient()
  * percentuais mensais. A Meta (agora manual) usa a mesma tipo_acumulado, então também é
  * mediada — como todo mês tem o mesmo valor (meta_ano repetido), a média bate com o próprio
  * meta_ano.
+ *
+ * OS-013: agrega_filhos/tipo_agregacao_meta/tipo_agregacao_real/tipo_acumulado agora vivem em
+ * Indicador (fixos entre anos) — só precisam ser trocados uma vez, fora do loop de anos. Os
+ * valores mensais/acumulados (por ano) continuam em Meta.
  */
 const ICS_ALVO = ['Sistemas', 'Equipamentos e Serviços', 'Inventário']
 const ANOS = [2024, 2025, 2026]
@@ -34,35 +38,54 @@ const ANOS = [2024, 2025, 2026]
 async function main() {
   const setor = await prisma.setor.findFirstOrThrow({ where: { nome: 'Gustavo Borges' } })
 
-  for (const ano of ANOS) {
-    console.log(`\n📊 Ano ${ano}`)
-    for (const nome of ICS_ALVO) {
-      const ic = await prisma.meta.findFirst({ where: { setorId: setor.id, ano, indicador: nome, icIv: 'IC' } })
+  for (const nome of ICS_ALVO) {
+    const indicador = await prisma.indicador.findFirst({ where: { setorId: setor.id, nome, icIv: 'IC' } })
+    if (!indicador) {
+      console.log(`\n⚠️ Indicador "${nome}" não encontrado, pulando.`)
+      continue
+    }
+
+    await prisma.indicador.update({
+      where: { id: indicador.id },
+      data: {
+        agregaFilhos: true,
+        tipoAgregacaoMeta: 'meta_manual',
+        tipoAgregacaoReal: 'proporcao_agregada',
+        tipoAcumuladoMeta: 'media',
+        tipoAcumuladoReal: 'media',
+      },
+    })
+
+    console.log(`\n📊 "${nome}"`)
+    for (const ano of ANOS) {
+      const ic = await prisma.meta.findFirst({ where: { indicadorId: indicador.id, ano } })
       if (!ic) {
-        console.log(`   ⚠️ IC "${nome}" não encontrado, pulando.`)
+        console.log(`   ⚠️ [${ano}] linha de meta não encontrada, pulando.`)
         continue
       }
 
-      const filhos = await prisma.meta.findMany({ where: { paiId: ic.id, ativo: true } })
+      const filhosIndicadores = await prisma.indicador.findMany({ where: { paiId: indicador.id }, select: { id: true } })
+      const filhos = await prisma.meta.findMany({
+        where: { indicadorId: { in: filhosIndicadores.map((f) => f.id) }, ano, ativo: true },
+      })
       const agregado = recalcularAgregadoIC(filhos, {
         tipoAgregacaoMeta: 'meta_manual',
         tipoAgregacaoReal: 'proporcao_agregada',
         metaManualAcum: null, // não usado mais nesse modo — meta é digitada mês a mês
+        realManualAcum: null, // não usado — tipo_agregacao_real aqui é proporcao_agregada, não real_manual
       })
 
       // Meta: restaura o valor mensal original (meta_ano repetido em todo mês), editável
       // daqui pra frente via PUT /:id/meta — recalcularAgregadoIC nunca mexe nisso.
       const metaMensal = ic.metaAno
       const dataMesesMeta = Object.fromEntries(MESES.map((mes) => [`meta${mes}`, metaMensal ?? undefined]))
-      const dataMesesReal = Object.fromEntries(MESES.map((mes) => [`real${mes}`, agregado.realPorMes[mes]]))
+      const dataMesesReal = Object.fromEntries(
+        MESES.map((mes) => [`real${mes}`, agregado.realPorMes ? agregado.realPorMes[mes] : undefined])
+      )
 
       await prisma.meta.update({
         where: { id: ic.id },
         data: {
-          agregaFilhos: true,
-          tipoAgregacaoMeta: 'meta_manual',
-          tipoAgregacaoReal: 'proporcao_agregada',
-          tipoAcumulado: 'media',
           metaManualAcum: null,
           ...dataMesesMeta,
           ...dataMesesReal,
@@ -72,7 +95,7 @@ async function main() {
       })
 
       const percentual = metaMensal && !metaMensal.isZero() ? agregado.acumReal?.div(metaMensal).mul(100).toDecimalPlaces(1) : null
-      console.log(`   ✓ "${nome}": metaMensal=${metaMensal} acumReal=${agregado.acumReal} (${percentual}% da meta)`)
+      console.log(`   ✓ [${ano}] metaMensal=${metaMensal} acumReal=${agregado.acumReal} (${percentual}% da meta)`)
     }
   }
 

@@ -1,5 +1,5 @@
 import { apiFetch } from "./api";
-import { PaginatedResponse, Produto, ProdutoComMetas, StatusProduto } from "../types";
+import { PaginatedResponse, Produto, ProdutoComIndicadores, StatusProduto } from "../types";
 
 export interface ListarProdutosParams {
   setor_id?: string;
@@ -17,8 +17,8 @@ export function listarProdutos(params: ListarProdutosParams): Promise<PaginatedR
   return apiFetch<PaginatedResponse<Produto>>(`/produtos?${query.toString()}`);
 }
 
-export function obterProduto(id: string): Promise<ProdutoComMetas> {
-  return apiFetch<ProdutoComMetas>(`/produtos/${id}`);
+export function obterProduto(id: string): Promise<ProdutoComIndicadores> {
+  return apiFetch<ProdutoComIndicadores>(`/produtos/${id}`);
 }
 
 export interface CriarProdutoBody {

@@ -16,11 +16,16 @@ const prisma = new PrismaClient()
  * tipo_agregacao_real, sem alterar a configuração — diferente do fix dos ICs do Gustavo Borges,
  * que precisou trocar a configuração). Idempotente: como sempre recalcula a partir dos filhos
  * atuais, pode ser rodado de novo sem problema (só não faz nada em ICs que já têm valor).
+ *
+ * OS-013: agrega_filhos/tipo_agregacao_meta/tipo_agregacao_real agora vivem em Indicador —
+ * o candidato é filtrado via a relação `indicador`, e os filhos são resolvidos por
+ * indicador.filhos (hierarquia fixa) restrita ao mesmo ano do IC.
  */
 async function main() {
   const candidatos = await prisma.meta.findMany({
-    where: { icIv: 'IC', agregaFilhos: true, ativo: true, acumMeta: null, acumReal: null },
-    orderBy: [{ ano: 'asc' }, { indicador: 'asc' }],
+    where: { indicador: { icIv: 'IC', agregaFilhos: true }, ativo: true, acumMeta: null, acumReal: null },
+    include: { indicador: true },
+    orderBy: [{ ano: 'asc' }],
   })
 
   if (candidatos.length === 0) {
@@ -31,21 +36,25 @@ async function main() {
   console.log(`Encontrados ${candidatos.length} ICs agregadores nunca calculados:\n`)
 
   for (const ic of candidatos) {
-    const filhos = await prisma.meta.findMany({ where: { paiId: ic.id, ativo: true } })
+    const filhosIndicadores = await prisma.indicador.findMany({ where: { paiId: ic.indicadorId }, select: { id: true } })
+    const filhos = await prisma.meta.findMany({
+      where: { indicadorId: { in: filhosIndicadores.map((f) => f.id) }, ano: ic.ano, ativo: true },
+    })
     if (filhos.length === 0) {
-      console.log(`   ⚠️ [${ic.ano}] "${ic.indicador}" não tem filhos ativos, pulando.`)
+      console.log(`   ⚠️ [${ic.ano}] "${ic.indicador.nome}" não tem filhos ativos, pulando.`)
       continue
     }
 
     const agregado = recalcularAgregadoIC(filhos, {
-      tipoAgregacaoMeta: ic.tipoAgregacaoMeta,
-      tipoAgregacaoReal: ic.tipoAgregacaoReal,
+      tipoAgregacaoMeta: ic.indicador.tipoAgregacaoMeta,
+      tipoAgregacaoReal: ic.indicador.tipoAgregacaoReal,
       metaManualAcum: ic.metaManualAcum,
+      realManualAcum: ic.indicador.realManualAcum,
     })
 
     const dataMeses = Object.fromEntries([
       ...MESES.map((mes) => [`meta${mes}`, agregado.metaPorMes ? agregado.metaPorMes[mes] : undefined]),
-      ...MESES.map((mes) => [`real${mes}`, agregado.realPorMes[mes]]),
+      ...MESES.map((mes) => [`real${mes}`, agregado.realPorMes ? agregado.realPorMes[mes] : undefined]),
     ])
 
     await prisma.meta.update({
@@ -53,7 +62,7 @@ async function main() {
       data: { ...dataMeses, acumMeta: agregado.acumMeta, acumReal: agregado.acumReal },
     })
 
-    console.log(`   ✓ [${ic.ano}] "${ic.indicador}" (${filhos.length} filhos): acumMeta=${agregado.acumMeta} acumReal=${agregado.acumReal}`)
+    console.log(`   ✓ [${ic.ano}] "${ic.indicador.nome}" (${filhos.length} filhos): acumMeta=${agregado.acumMeta} acumReal=${agregado.acumReal}`)
   }
 
   console.log('\n✅ Concluído!')

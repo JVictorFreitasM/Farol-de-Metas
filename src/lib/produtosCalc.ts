@@ -1,10 +1,11 @@
-import { Meta } from "@prisma/client";
+import { Indicador } from "@prisma/client";
 
-export function contarMetasAtivasPorProduto(metas: Pick<Meta, "produtoId">[]): Map<string, number> {
+// OS-013: produto_id vive em Indicador (não varia por ano), não mais em Meta.
+export function contarIndicadoresAtivosPorProduto(indicadores: Pick<Indicador, "produtoId">[]): Map<string, number> {
   const contagem = new Map<string, number>();
-  for (const meta of metas) {
-    if (!meta.produtoId) continue;
-    contagem.set(meta.produtoId, (contagem.get(meta.produtoId) ?? 0) + 1);
+  for (const indicador of indicadores) {
+    if (!indicador.produtoId) continue;
+    contagem.set(indicador.produtoId, (contagem.get(indicador.produtoId) ?? 0) + 1);
   }
   return contagem;
 }

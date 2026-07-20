@@ -31,6 +31,12 @@ const LABEL_AGREGACAO_REAL: Record<Meta["tipo_agregacao_real"], string> = {
   soma: "Soma dos filhos",
   media: "Média dos filhos",
   proporcao_agregada: "Proporção agregada",
+  real_manual: "Manual",
+};
+const LABEL_TIPO_ACUMULADO: Record<Meta["tipo_acumulado_meta"], string> = {
+  soma: "Soma",
+  media: "Média",
+  manual: "Manual",
 };
 
 export function AcumuladoTooltip({
@@ -195,8 +201,12 @@ export function AcumuladoTooltip({
               <span>{formatValor(meta.acum_real, meta.unidade)}</span>
             </div>
             <div className="acumulado-tooltip-row">
-              <span>Tipo Acum.</span>
-              <span>{meta.tipo_acumulado === "media" ? "Média" : "Soma"}</span>
+              <span>Tipo Acum. (Meta)</span>
+              <span>{LABEL_TIPO_ACUMULADO[meta.tipo_acumulado_meta]}</span>
+            </div>
+            <div className="acumulado-tooltip-row">
+              <span>Tipo Acum. (Real)</span>
+              <span>{LABEL_TIPO_ACUMULADO[meta.tipo_acumulado_real]}</span>
             </div>
             {meta.agrega_filhos && (
               <div className="acumulado-tooltip-row">

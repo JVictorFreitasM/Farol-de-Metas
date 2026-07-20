@@ -20,7 +20,10 @@ relatoriosRouter.get("/dashboard", async (req, res, next) => {
     const setorId = resolveSetorId(req.usuario!, query.setor_id);
 
     const setor = await prisma.setor.findUnique({ where: { id: setorId } });
-    const ivs = await prisma.meta.findMany({ where: { setorId, ano: query.ano, icIv: "IV", ativo: true } });
+    const ivs = await prisma.meta.findMany({
+      where: { setorId, ano: query.ano, ativo: true, indicador: { icIv: "IV" } },
+      include: { indicador: true },
+    });
 
     const totalIndicadores = ivs.length;
     const statusOk = ivs.filter((m) => m.statusAcum === "ok").length;
@@ -28,8 +31,8 @@ relatoriosRouter.get("/dashboard", async (req, res, next) => {
     const percentual = totalIndicadores > 0 ? (statusOk / totalIndicadores) * 100 : 0;
 
     const metasPorStatus = [
-      { status: "ok", quantidade: statusOk, exemplos: ivs.filter((m) => m.statusAcum === "ok").slice(0, 5).map((m) => m.indicador) },
-      { status: "nok", quantidade: statusNok, exemplos: ivs.filter((m) => m.statusAcum === "nok").slice(0, 5).map((m) => m.indicador) },
+      { status: "ok", quantidade: statusOk, exemplos: ivs.filter((m) => m.statusAcum === "ok").slice(0, 5).map((m) => m.indicador.nome) },
+      { status: "nok", quantidade: statusNok, exemplos: ivs.filter((m) => m.statusAcum === "nok").slice(0, 5).map((m) => m.indicador.nome) },
     ];
 
     const evolucaoMensal = MESES.map((mes) => {
@@ -45,7 +48,10 @@ relatoriosRouter.get("/dashboard", async (req, res, next) => {
 
     // Preenchimento (metas_incompletas) considera TODOS os indicadores (IC + IV) — diferente do
     // atingimento acima, que é só IV. Um IC sem "real" preenchido também é uma pendência real.
-    const todos = await prisma.meta.findMany({ where: { setorId, ano: query.ano, ativo: true } });
+    const todos = await prisma.meta.findMany({
+      where: { setorId, ano: query.ano, ativo: true },
+      include: { indicador: true },
+    });
 
     const hoje = new Date();
     const mesLimite = query.ano === hoje.getFullYear() ? hoje.getMonth() + 1 : 12;
@@ -58,7 +64,7 @@ relatoriosRouter.get("/dashboard", async (req, res, next) => {
         });
         return {
           id: meta.id,
-          indicador: meta.indicador,
+          indicador: meta.indicador.nome,
           responsavel: meta.responsavel,
           meses_faltando: mesesFaltando,
           quantidade_faltando: mesesFaltando.length,
@@ -68,22 +74,40 @@ relatoriosRouter.get("/dashboard", async (req, res, next) => {
       .sort((a, b) => b.quantidade_faltando - a.quantidade_faltando);
 
     const ics = await prisma.meta.findMany({
-      where: { setorId, ano: query.ano, icIv: "IC", ativo: true },
-      include: { filhos: { where: { ativo: true } } },
+      where: { setorId, ano: query.ano, ativo: true, indicador: { icIv: "IC" } },
+      include: { indicador: true },
     });
+    const filhosIndicadores = await prisma.indicador.findMany({
+      where: { paiId: { in: ics.map((ic) => ic.indicadorId) } },
+      select: { id: true, paiId: true },
+    });
+    const filhosMetas = await prisma.meta.findMany({
+      where: { indicadorId: { in: filhosIndicadores.map((f) => f.id) }, ano: query.ano, ativo: true },
+      include: { indicador: true },
+    });
+    const filhosPorPaiIndicadorId = new Map<string, typeof filhosMetas>();
+    for (const filhoMeta of filhosMetas) {
+      const paiIndicadorId = filhosIndicadores.find((f) => f.id === filhoMeta.indicadorId)?.paiId;
+      if (!paiIndicadorId) continue;
+      const lista = filhosPorPaiIndicadorId.get(paiIndicadorId) ?? [];
+      lista.push(filhoMeta);
+      filhosPorPaiIndicadorId.set(paiIndicadorId, lista);
+    }
+
     const icComProblemas = ics
       .map((ic) => {
-        const filhosNok = ic.filhos.filter((f) => f.statusAcum === "nok");
+        const filhos = filhosPorPaiIndicadorId.get(ic.indicadorId) ?? [];
+        const filhosNok = filhos.filter((f) => f.statusAcum === "nok");
         return {
-          indicador: ic.indicador,
-          unidade: ic.unidade,
+          indicador: ic.indicador.nome,
+          unidade: ic.indicador.unidade,
           acumulado: ic.acumReal,
           meta_ano: ic.metaAno,
           percentual:
             ic.metaAno != null && ic.acumReal != null && !ic.metaAno.isZero()
               ? ic.acumReal.div(ic.metaAno).mul(100).toDecimalPlaces(1)
               : null,
-          filhos_nok: filhosNok.map((f) => f.indicador),
+          filhos_nok: filhosNok.map((f) => f.indicador.nome),
         };
       })
       .filter((ic) => ic.filhos_nok.length > 0);
@@ -123,7 +147,9 @@ relatoriosRouter.get("/comparativa", authorize("gerente", "admin"), async (req, 
     const resultado = [];
 
     for (const setor of setores) {
-      const ivs = await prisma.meta.findMany({ where: { setorId: setor.id, ano: query.ano, icIv: "IV", ativo: true } });
+      const ivs = await prisma.meta.findMany({
+        where: { setorId: setor.id, ano: query.ano, ativo: true, indicador: { icIv: "IV" } },
+      });
       const totalIndicadores = ivs.length;
       const statusOk = ivs.filter((m) => m.statusAcum === "ok").length;
       const percentual = totalIndicadores > 0 ? (statusOk / totalIndicadores) * 100 : 0;
@@ -133,7 +159,10 @@ relatoriosRouter.get("/comparativa", authorize("gerente", "admin"), async (req, 
       if (mesKey) {
         // Preenchimento considera TODOS os indicadores (IC + IV) — diferente do % atingimento
         // acima, que é só IV. Um IC sem "real" preenchido também é uma pendência real.
-        const todos = await prisma.meta.findMany({ where: { setorId: setor.id, ano: query.ano, ativo: true } });
+        const todos = await prisma.meta.findMany({
+          where: { setorId: setor.id, ano: query.ano, ativo: true },
+          include: { indicador: true },
+        });
         const realCampo = `real${mesKey}` as keyof Meta;
         const pendentes = todos.filter((m) => m[realCampo] == null);
         const preenchidas = todos.length - pendentes.length;
@@ -144,8 +173,8 @@ relatoriosRouter.get("/comparativa", authorize("gerente", "admin"), async (req, 
         };
         metasPendentes = pendentes.map((m) => ({
           id: m.id,
-          indicador: m.indicador,
-          ic_iv: m.icIv,
+          indicador: m.indicador.nome,
+          ic_iv: m.indicador.icIv,
           responsavel: m.responsavel,
         }));
       }
