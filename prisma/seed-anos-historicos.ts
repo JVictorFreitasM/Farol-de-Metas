@@ -7,13 +7,13 @@ const MESES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'o
 
 // Mapeamento: nome do responsável do Excel → nome do setor no banco (igual ao seed.ts)
 const RESPONSAVEL_PARA_SETOR: Record<string, string> = {
-  'Anny Moraes': 'Anny Moraes',
-  'Davi': 'Davi',
-  'Francilane': 'Francilane',
-  'Francisca Adriele': 'Francisca Adriele',
-  'Gustavo Borges': 'Gustavo Borges',
-  'Maria Nadiane': 'Maria Nadiane',
-  'Orleans': 'Orleans',
+  'Anny Moraes': 'Gestão de Gente 1',
+  'Davi': 'Financeiro 2',
+  'Francilane': 'Gestão de Gente 2',
+  'Francisca Adriele': 'Faturamento',
+  'Gustavo Borges': 'TI',
+  'Maria Nadiane': 'Financeiro 1',
+  'Orleans': 'Segurança do Trabalho',
 }
 
 interface ConfigAno {

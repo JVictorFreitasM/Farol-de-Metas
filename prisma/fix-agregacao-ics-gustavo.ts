@@ -36,7 +36,7 @@ const ICS_ALVO = ['Sistemas', 'Equipamentos e Serviços', 'Inventário']
 const ANOS = [2024, 2025, 2026]
 
 async function main() {
-  const setor = await prisma.setor.findFirstOrThrow({ where: { nome: 'Gustavo Borges' } })
+  const setor = await prisma.setor.findFirstOrThrow({ where: { nome: 'TI' } })
 
   for (const nome of ICS_ALVO) {
     const indicador = await prisma.indicador.findFirst({ where: { setorId: setor.id, nome, icIv: 'IC' } })

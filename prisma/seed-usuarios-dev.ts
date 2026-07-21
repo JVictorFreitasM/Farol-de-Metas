@@ -4,7 +4,7 @@ import { hashPassword } from "../src/lib/password";
 const prisma = new PrismaClient();
 
 async function main() {
-  const gustavo = await prisma.setor.findUniqueOrThrow({ where: { nome: "Gustavo Borges" } });
+  const gustavo = await prisma.setor.findUniqueOrThrow({ where: { nome: "TI" } });
 
   const senhaHash = await hashPassword("senha123");
 

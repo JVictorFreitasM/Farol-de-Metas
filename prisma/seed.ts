@@ -5,36 +5,36 @@ import { metasSeed } from './metas-seed-data'
 const prisma = new PrismaClient()
 
 const SETORES = [
-  { nome: 'Anny Moraes',       email: 'anny.moraes@company.com' },
-  { nome: 'Davi',              email: 'davi@company.com' },
-  { nome: 'Francilane',        email: 'francilane@company.com' },
-  { nome: 'Francisca Adriele', email: 'francisca.adriele@company.com' },
-  { nome: 'Gustavo Borges',    email: 'gustavo.borges@company.com' },
-  { nome: 'Maria Nadiane',     email: 'maria.nadiane@company.com' },
-  { nome: 'Orleans',           email: 'orleans@company.com' },
+  { nome: 'Gestão de Gente 1',   email: 'anny.moraes@company.com' },
+  { nome: 'Financeiro 2',        email: 'davi@company.com' },
+  { nome: 'Gestão de Gente 2',   email: 'francilane@company.com' },
+  { nome: 'Faturamento',         email: 'francisca.adriele@company.com' },
+  { nome: 'TI',                  email: 'gustavo.borges@company.com' },
+  { nome: 'Financeiro 1',        email: 'maria.nadiane@company.com' },
+  { nome: 'Segurança do Trabalho', email: 'orleans@company.com' },
 ]
 
 const USUARIOS = [
   { email: 'admin@farol.com',            nome: 'Administrador',      senha: 'Admin@2025',       role: 'admin'       as const, setor: null },
   { email: 'gerente@farol.com',          nome: 'Gerente',            senha: 'Gerente@2025',     role: 'gerente'     as const, setor: null },
-  { email: 'anny@farol.com',             nome: 'Anny Moraes',        senha: 'Anny@2025',        role: 'responsavel' as const, setor: 'Anny Moraes' },
-  { email: 'davi@farol.com',             nome: 'Davi',               senha: 'Davi@2025',        role: 'responsavel' as const, setor: 'Davi' },
-  { email: 'francilane@farol.com',       nome: 'Francilane',         senha: 'Francilane@2025',  role: 'responsavel' as const, setor: 'Francilane' },
-  { email: 'francisca@farol.com',        nome: 'Francisca Adriele',  senha: 'Franc@2025',       role: 'responsavel' as const, setor: 'Francisca Adriele' },
-  { email: 'gustavo@farol.com',          nome: 'Gustavo Borges',     senha: 'Gustavo@2025',     role: 'responsavel' as const, setor: 'Gustavo Borges' },
-  { email: 'maria.nadiane@farol.com',    nome: 'Maria Nadiane',      senha: 'Maria@2025',       role: 'responsavel' as const, setor: 'Maria Nadiane' },
-  { email: 'orleans@farol.com',          nome: 'Orleans',            senha: 'Orleans@2025',     role: 'responsavel' as const, setor: 'Orleans' },
+  { email: 'anny@farol.com',             nome: 'Anny Moraes',        senha: 'Anny@2025',        role: 'responsavel' as const, setor: 'Gestão de Gente 1' },
+  { email: 'davi@farol.com',             nome: 'Davi',               senha: 'Davi@2025',        role: 'responsavel' as const, setor: 'Financeiro 2' },
+  { email: 'francilane@farol.com',       nome: 'Francilane',         senha: 'Francilane@2025',  role: 'responsavel' as const, setor: 'Gestão de Gente 2' },
+  { email: 'francisca@farol.com',        nome: 'Francisca Adriele',  senha: 'Franc@2025',       role: 'responsavel' as const, setor: 'Faturamento' },
+  { email: 'gustavo@farol.com',          nome: 'Gustavo Borges',     senha: 'Gustavo@2025',     role: 'responsavel' as const, setor: 'TI' },
+  { email: 'maria.nadiane@farol.com',    nome: 'Maria Nadiane',      senha: 'Maria@2025',       role: 'responsavel' as const, setor: 'Financeiro 1' },
+  { email: 'orleans@farol.com',          nome: 'Orleans',            senha: 'Orleans@2025',     role: 'responsavel' as const, setor: 'Segurança do Trabalho' },
 ]
 
 // Mapeamento: nome do responsável do Excel → nome do setor no banco
 const RESPONSAVEL_PARA_SETOR: Record<string, string> = {
-  'Anny Moraes':       'Anny Moraes',
-  'Davi':              'Davi',
-  'Francilane':        'Francilane',
-  'Francisca Adriele': 'Francisca Adriele',
-  'Gustavo Borges':    'Gustavo Borges',
-  'Maria Nadiane':     'Maria Nadiane',
-  'Orleans':           'Orleans',
+  'Anny Moraes':       'Gestão de Gente 1',
+  'Davi':              'Financeiro 2',
+  'Francilane':        'Gestão de Gente 2',
+  'Francisca Adriele': 'Faturamento',
+  'Gustavo Borges':    'TI',
+  'Maria Nadiane':     'Financeiro 1',
+  'Orleans':           'Segurança do Trabalho',
 }
 
 async function calcularAcumulado(m: typeof metasSeed[0]) {
