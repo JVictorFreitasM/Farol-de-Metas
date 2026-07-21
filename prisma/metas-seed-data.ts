@@ -976,9 +976,11 @@ export const metasSeed: MetaSeed[] = [
     unidade: "DD",
     tipo_meta: null,
     agrega_filhos: false,
-    // Meta mensal é constante (~30) — soma multiplicaria por 12; média bate com a planilha
-    // (achado durante validação de regressão da OS-015, não estava na Categoria A do doc).
-    tipo_acumulado_meta: "media",
+    // Célula N56 da planilha é um valor fixo (30), não fórmula — nem soma nem média dos meses
+    // bate (jul foge do padrão constante ~30 e vale 45), então é acumulado manual, não média
+    // (achado durante validação de regressão da OS-015, não estava em nenhuma categoria do doc).
+    tipo_acumulado_meta: "manual",
+    acum_meta_manual: 30,
     tipo_acumulado_real: "manual",
     acum_real_manual: 13.27,
     meta_ano: 30,
@@ -987,7 +989,9 @@ export const metasSeed: MetaSeed[] = [
     meses: {
       jan: { meta: 30, real: 9.55 },
       fev: { meta: 30, real: 12.98 },
-      mar: { meta: null, real: 11.76 },
+      // mar.meta estava faltando na extração original (célula X56 = 30) — achado durante
+      // validação de regressão da OS-015.
+      mar: { meta: 30, real: 11.76 },
       abr: { meta: 30, real: 11.2 },
       mai: { meta: 30, real: 13.27 },
       jun: { meta: 30, real: 12.84 },
@@ -1270,7 +1274,9 @@ export const metasSeed: MetaSeed[] = [
     unidade: "%",
     tipo_meta: "menor_melhor",
     agrega_filhos: false,
-    tipo_acumulado_meta: "soma",
+    // Meta mensal é constante (1) — soma multiplicaria por 12; média bate com a planilha
+    // (achado durante validação de regressão da OS-015, não estava na Categoria A do doc).
+    tipo_acumulado_meta: "media",
     tipo_acumulado_real: "manual",
     acum_real_manual: 1,
     meta_ano: 1,
@@ -1960,7 +1966,10 @@ export const metasSeed: MetaSeed[] = [
       mar: { meta: 156, real: 163 },
       abr: { meta: 163, real: 164 },
       mai: { meta: 164, real: 167 },
-      jun: { meta: null, real: 190 },
+      // jun.meta estava faltando na extração original (célula AK101 = 167) — achado durante
+      // validação de regressão da OS-015; corrigido para bater com a planilha e evitar que o
+      // gap se propagasse pro acum_real de "Inventário" via proporção agregada dos filhos.
+      jun: { meta: 167, real: 190 },
       jul: { meta: 190, real: 195 },
       ago: { meta: 195, real: 196 },
       set: { meta: 196, real: 199 },
