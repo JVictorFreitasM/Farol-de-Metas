@@ -1,6 +1,7 @@
 # Farol
 
 Sistema web para acompanhamento de metas e indicadores empresariais (ICs e IVs) por setor. Permite cadastrar indicadores com hierarquia (Indicador de Controle → Indicadores de Verificação), registrar metas e realizados mês a mês, calcular acumulados (soma, média ou valor manual), comparar anos, gerar dashboards e relatórios, e auditar todas as alterações.
+<img width="1920" height="1299" alt="Farol-07-21-2026_09_17_AM" src="https://github.com/user-attachments/assets/9fcd4e8e-55ef-4445-aeb9-0abf7bfc4244" />
 
 ## ✨ Funcionalidades
 
