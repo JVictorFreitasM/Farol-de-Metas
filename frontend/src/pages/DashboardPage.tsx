@@ -8,6 +8,7 @@ import { gerarOpcoesAno, useAnoSelecionado } from "../hooks/useAnoSelecionado";
 import { useSetorSelecionado } from "../hooks/useSetorSelecionado";
 import { comparativaSetores, dashboardSetor } from "../services/relatoriosService";
 import { listarMetas, listarSetores } from "../services/metasService";
+import { obterConfiguracao } from "../services/configuracoesService";
 import { ComparativaSetor, DashboardResumo, Meta, MESES, MESES_LABEL, Mes, Setor, StatusMeta } from "../types";
 
 interface MesStatus {
@@ -45,6 +46,7 @@ export function DashboardPage() {
   const [setorExpandido, setSetorExpandido] = useState<string | null>(null);
   const [detalhes, setDetalhes] = useState<Record<string, DetalheSetor>>({});
   const [loading, setLoading] = useState(true);
+  const [diaLimite, setDiaLimite] = useState<number | null>(null);
 
   useEffect(() => {
     if (!isGerente) return;
@@ -52,6 +54,12 @@ export function DashboardPage() {
       .then(setSetores)
       .catch((err) => toast.error(err.message));
   }, [isGerente]);
+
+  useEffect(() => {
+    obterConfiguracao()
+      .then((c) => setDiaLimite(c.dia_limite_preenchimento))
+      .catch(() => {});
+  }, []);
 
   // Admin/gerente sem setor fixo: escolhe o primeiro setor disponível se nenhum estiver selecionado.
   useEffect(() => {
@@ -172,6 +180,13 @@ export function DashboardPage() {
           </select>
         </label>
       </div>
+
+      {diaLimite !== null && (
+        <div className="aviso-fechamento">
+          ⏰ O preenchimento de Meta e Real fecha todo dia <strong>{diaLimite}</strong> de cada mês.
+          Depois dessa data, o mês anterior trava para edição — fale com o administrador para reabrir, se precisar.
+        </div>
+      )}
 
       {isGerente && ranking.length > 0 && (
         <div className="card">

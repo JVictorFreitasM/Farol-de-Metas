@@ -173,19 +173,19 @@ export interface ConfigAgregacaoIC {
 }
 
 /**
- * Recalcula os campos agregados de um IC com agrega_filhos=true a partir dos IVs filhos,
+ * Recalcula os campos agregados de um IC com agrega_ivs=true a partir dos IVs,
  * respeitando regras separadas para Meta e Real (OS-009, OS-014):
- * - tipo_agregacao_meta: soma | media (calculado dos filhos) | meta_manual (Meta NÃO é
- *   derivada dos filhos — o gerente digita mês a mês, como em qualquer indicador comum;
+ * - tipo_agregacao_meta: soma | media (calculado dos IVs) | meta_manual (Meta NÃO é
+ *   derivada dos IVs — o gerente digita mês a mês, como em qualquer indicador comum;
  *   metaPorMes/acumMeta retornam `null`/`undefined` como sinal para o chamador não
  *   sobrescrever os valores já existentes na linha do IC)
- * - tipo_agregacao_real: soma | media | proporcao_agregada (SUM(reais filhos) / SUM(metas
- *   filhos)) | real_manual (Real NÃO é derivado dos filhos — digitado direto, mesmo padrão do
+ * - tipo_agregacao_real: soma | media | proporcao_agregada (SUM(reais dos IVs) / SUM(metas
+ *   dos IVs)) | real_manual (Real NÃO é derivado dos IVs — digitado direto, mesmo padrão do
  *   meta_manual; realPorMes/acumReal retornam `null`/`undefined` como sinal para o chamador
  *   não sobrescrever os meses/acumulado já existentes na linha do IC)
  */
 export function recalcularAgregadoIC(
-  filhos: Meta[],
+  ivs: Meta[],
   config: ConfigAgregacaoIC
 ): {
   /** `null` quando tipo_agregacao_meta="meta_manual": Meta não deve ser sobrescrita. */
@@ -197,8 +197,12 @@ export function recalcularAgregadoIC(
    * (o Prisma ignora campos `undefined` num update, então o chamador pode repassar direto). */
   acumMeta: Decimal | null | undefined;
   /** Quando tipo_agregacao_real="real_manual", retorna config.realManualAcum diretamente
-   * em vez de calcular a partir dos filhos. */
+   * em vez de calcular a partir dos IVs. */
   acumReal: Decimal | null | undefined;
+  /** Meta anual do IC = soma/média das metas anuais dos IVs (mesmo padrão de acumMeta).
+   * `undefined` quando tipo_agregacao_meta="meta_manual": meta_ano é digitada direto no IC,
+   * não deve ser sobrescrita. */
+  metaAno: Decimal | null | undefined;
 } {
   const metaManual = config.tipoAgregacaoMeta === "meta_manual";
   const realManual = config.tipoAgregacaoReal === "real_manual";
@@ -206,8 +210,8 @@ export function recalcularAgregadoIC(
   const realPorMes = realManual ? null : ({} as Record<MesKey, Decimal | null>);
 
   for (const mes of MESES) {
-    const valoresMeta = filhos.map((f) => f[campoMeta(mes)] as Decimal | null).filter((v): v is Decimal => v != null);
-    const valoresReal = filhos.map((f) => f[campoReal(mes)] as Decimal | null).filter((v): v is Decimal => v != null);
+    const valoresMeta = ivs.map((f) => f[campoMeta(mes)] as Decimal | null).filter((v): v is Decimal => v != null);
+    const valoresReal = ivs.map((f) => f[campoReal(mes)] as Decimal | null).filter((v): v is Decimal => v != null);
 
     if (metaPorMes) {
       metaPorMes[mes] = somaOuMedia(valoresMeta, config.tipoAgregacaoMeta as "soma" | "media");
@@ -221,8 +225,8 @@ export function recalcularAgregadoIC(
     }
   }
 
-  const acumMetaValores = filhos.map((f) => f.acumMeta).filter((v): v is Decimal => v != null);
-  const acumRealValores = filhos.map((f) => f.acumReal).filter((v): v is Decimal => v != null);
+  const acumMetaValores = ivs.map((f) => f.acumMeta).filter((v): v is Decimal => v != null);
+  const acumRealValores = ivs.map((f) => f.acumReal).filter((v): v is Decimal => v != null);
 
   const acumMeta = metaManual ? undefined : somaOuMedia(acumMetaValores, config.tipoAgregacaoMeta as "soma" | "media");
 
@@ -232,5 +236,8 @@ export function recalcularAgregadoIC(
     ? proporcaoAgregada(acumRealValores, acumMetaValores)
     : somaOuMedia(acumRealValores, config.tipoAgregacaoReal as "soma" | "media");
 
-  return { metaPorMes, realPorMes, acumMeta, acumReal };
+  const metaAnoValores = ivs.map((f) => f.metaAno).filter((v): v is Decimal => v != null);
+  const metaAno = metaManual ? undefined : somaOuMedia(metaAnoValores, config.tipoAgregacaoMeta as "soma" | "media");
+
+  return { metaPorMes, realPorMes, acumMeta, acumReal, metaAno };
 }

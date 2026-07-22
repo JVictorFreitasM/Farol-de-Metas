@@ -16,6 +16,9 @@ export function formatValor(valor: string | number | null | undefined, unidade: 
   if (unidade === "R$") {
     return n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
   }
+  if (unidade === "Tons") {
+    return `${n.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} Tons`;
+  }
 
   const numeroFormatado = n.toLocaleString("pt-BR", { maximumFractionDigits: 4 });
   return unidade ? `${numeroFormatado} ${unidade}` : numeroFormatado;
@@ -37,6 +40,7 @@ export function formatValorEscalado(valor: number | null | undefined, unidade: s
   if (valor === null || valor === undefined || !Number.isFinite(valor)) return "-";
   if (unidade === "%") return `${valor.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}%`;
   if (unidade === "R$") return valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+  if (unidade === "Tons") return `${valor.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} Tons`;
   const numeroFormatado = valor.toLocaleString("pt-BR", { maximumFractionDigits: 4 });
   return unidade ? `${numeroFormatado} ${unidade}` : numeroFormatado;
 }

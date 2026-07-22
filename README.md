@@ -8,7 +8,7 @@ Sistema web para acompanhamento de metas e indicadores empresariais (ICs e IVs) 
 - Autenticação por login/senha (JWT), com papéis `responsavel`, `gerente` e `admin`
 - Cadastro de indicadores (IC/IV) com hierarquia, produto associado e regras de agregação
 - Lançamento de metas e valores realizados mês a mês, com histórico de alterações
-- Cálculo automático de acumulados (soma / média / manual) por indicador, incluindo agregação de IC a partir dos IVs filhos
+- Cálculo automático de acumulados (soma / média / manual) por indicador, incluindo agregação de IC a partir dos IVs
 - Importação em massa de metas de um ano para outro, com ajuste percentual
 - Dashboard por setor (status OK/NOK, evolução mensal, indicadores incompletos)
 - Comparativo de indicadores entre múltiplos anos

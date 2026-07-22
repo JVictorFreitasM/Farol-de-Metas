@@ -23,13 +23,13 @@ const FECHAR_DELAY_MS = 200;
 const MARGEM = 8;
 
 const LABEL_AGREGACAO_META: Record<Meta["tipo_agregacao_meta"], string> = {
-  soma: "Soma dos filhos",
-  media: "Média dos filhos",
+  soma: "Soma dos IVs",
+  media: "Média dos IVs",
   meta_manual: "Manual",
 };
 const LABEL_AGREGACAO_REAL: Record<Meta["tipo_agregacao_real"], string> = {
-  soma: "Soma dos filhos",
-  media: "Média dos filhos",
+  soma: "Soma dos IVs",
+  media: "Média dos IVs",
   proporcao_agregada: "Proporção agregada",
   real_manual: "Manual",
 };
@@ -60,7 +60,7 @@ export function AcumuladoTooltip({
   const [editandoMetaManual, setEditandoMetaManual] = useState(false);
   const [valorMetaManual, setValorMetaManual] = useState("");
 
-  const ehMetaManual = meta.agrega_filhos && meta.tipo_agregacao_meta === "meta_manual";
+  const ehMetaManual = meta.agrega_ivs && meta.tipo_agregacao_meta === "meta_manual";
 
   const iniciarEdicaoMetaManual = () => {
     if (!podeEditarMetaManual || !ehMetaManual) return;
@@ -208,7 +208,7 @@ export function AcumuladoTooltip({
               <span>Tipo Acum. (Real)</span>
               <span>{LABEL_TIPO_ACUMULADO[meta.tipo_acumulado_real]}</span>
             </div>
-            {meta.agrega_filhos && (
+            {meta.agrega_ivs && (
               <div className="acumulado-tooltip-row">
                 <span>Agregação</span>
                 <span>

@@ -21,7 +21,7 @@ export interface CriarIndicadorBody {
   unidade: string;
   pai_id?: string;
   produto_id?: string;
-  agrega_filhos?: boolean;
+  agrega_ivs?: boolean;
   tipo_acumulado_meta?: "soma" | "media" | "manual";
   tipo_acumulado_real?: "soma" | "media" | "manual";
   tipo_agregacao_meta?: TipoAgregacaoMeta;
@@ -37,7 +37,7 @@ export interface EditarIndicadorBody {
   nome?: string;
   unidade?: string;
   produto_id?: string | null;
-  agrega_filhos?: boolean;
+  agrega_ivs?: boolean;
   tipo_acumulado_meta?: "soma" | "media" | "manual";
   tipo_acumulado_real?: "soma" | "media" | "manual";
   tipo_agregacao_meta?: TipoAgregacaoMeta;

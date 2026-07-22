@@ -52,10 +52,10 @@ enum StatusProduto {
   @@map("status_produto_type")
 }
 
-// OS-009: regras de agregação de um IC (agrega_filhos=true) a partir dos IVs filhos.
+// OS-009: regras de agregação de um IC (agrega_ivs=true) a partir dos IVs.
 // Meta e Real têm enums separados porque cada lado só aceita um subconjunto de regras:
 // meta_manual só faz sentido para a Meta (valor fixo digitado), proporcao_agregada só para o Real
-// (razão soma dos reais / soma das metas dos filhos).
+// (razão soma dos reais / soma das metas dos IVs).
 enum TipoAgregacaoMeta {
   soma
   media
@@ -68,7 +68,7 @@ enum TipoAgregacaoReal {
   soma
   media
   proporcao_agregada
-  real_manual // OS-014: Real do IC não deriva dos filhos, é digitado direto (mesmo padrão do meta_manual)
+  real_manual // OS-014: Real do IC não deriva dos IVs, é digitado direto (mesmo padrão do meta_manual)
 
   @@map("tipo_agregacao_real_type")
 }
@@ -81,11 +81,12 @@ model Setor {
   criadoEm     DateTime @default(now()) @map("criado_em")
   atualizadoEm DateTime @default(now()) @map("atualizado_em")
 
-  usuarios    Usuario[]
-  metas       Meta[]
-  produtos    Produto[]
-  indicadores Indicador[]
-  auditorias  Auditoria[]
+  usuarios     Usuario[]
+  metas        Meta[]
+  produtos     Produto[]
+  indicadores  Indicador[]
+  auditorias   Auditoria[]
+  desbloqueios DesbloqueioPreenchimento[]
 
   @@index([nome])
   @@index([email])
@@ -128,12 +129,12 @@ model Indicador {
 
   paiId  String?     @map("pai_id") @db.Uuid
   pai    Indicador?  @relation("IndicadorHierarquia", fields: [paiId], references: [id])
-  filhos Indicador[] @relation("IndicadorHierarquia")
+  ivs    Indicador[] @relation("IndicadorHierarquia")
 
   produtoId String?  @map("produto_id") @db.Uuid
   produto   Produto? @relation(fields: [produtoId], references: [id])
 
-  agregaFilhos      Boolean           @default(false) @map("agrega_filhos")
+  agregaIvs         Boolean           @default(false) @map("agrega_ivs")
   // OS-015: "soma" | "media" | "manual", em separado pro lado Meta e pro lado Real — nem
   // sempre os dois lados de um indicador seguem a mesma regra de acumulação. "manual" significa
   // que os 12 meses continuam preenchidos normalmente (histórico/rastreio), mas o acumulado
@@ -206,7 +207,7 @@ model Meta {
   tipoMeta    TipoMeta @map("tipo_meta")
 
   // Valor fixo de meta acumulada, usado quando indicador.tipo_agregacao_meta = meta_manual
-  // (IC agregador — Meta não deriva dos filhos). Hoje vestigial: a Meta desses ICs é digitada
+  // (IC agregador — Meta não deriva dos IVs). Hoje vestigial: a Meta desses ICs é digitada
   // mês a mês (ver PUT /:id/meta), e o acumulado vem de acumMetaManual/tipo_acumulado_meta.
   metaManualAcum Decimal? @map("meta_manual_acum") @db.Decimal(15, 4)
 
@@ -274,7 +275,7 @@ model Meta {
   statusDez StatusMeta? @map("status_dez")
 
   // Acumulados — calculados pelo backend e armazenados
-  // (não podem ser GENERATED pois dependem de tipo_acumulado e de filhos)
+  // (não podem ser GENERATED pois dependem de tipo_acumulado e dos IVs)
   acumMeta   Decimal?    @map("acum_meta") @db.Decimal(15, 4)
   acumReal   Decimal?    @map("acum_real") @db.Decimal(15, 4)
   /// Coluna gerada pelo banco. Não gravar via Prisma Client.
@@ -320,6 +321,34 @@ model MetaHistorico {
   @@index([metasId])
   @@index([alteradoEm])
   @@map("metas_historico")
+}
+
+// OS-016: configuração global de fechamento mensal — tabela singleton (sempre 1 registro,
+// criado no seed). Passado o dia-limite do mês corrente, o mês anterior (e todos os anteriores
+// a ele) trava para responsavel/gerente em PUT /:id/meta e /:id/real (ver src/lib/fechamento.ts).
+model ConfiguracaoSistema {
+  id                     String   @id @default(uuid()) @db.Uuid
+  diaLimitePreenchimento Int      @default(15) @map("dia_limite_preenchimento")
+  atualizadoPor          String?  @map("atualizado_por") @db.Uuid
+  atualizadoEm           DateTime @default(now()) @updatedAt @map("atualizado_em")
+
+  @@map("configuracao_sistema")
+}
+
+// OS-016: existência da linha = setor liberado a editar aquele mês/ano mesmo depois do
+// fechamento (ver mesEstaFechado). Admin cria para reabrir e remove para travar antes do previsto.
+model DesbloqueioPreenchimento {
+  id          String   @id @default(uuid()) @db.Uuid
+  setorId     String   @map("setor_id") @db.Uuid
+  setor       Setor    @relation(fields: [setorId], references: [id])
+  ano         Int
+  mes         Int // 1-12
+  liberadoPor String   @map("liberado_por") @db.Uuid
+  liberadoEm  DateTime @default(now()) @map("liberado_em")
+
+  @@unique([setorId, ano, mes])
+  @@index([setorId])
+  @@map("desbloqueios_preenchimento")
 }
 
 model Auditoria {

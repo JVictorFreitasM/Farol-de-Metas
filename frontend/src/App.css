@@ -301,6 +301,20 @@ body {
   gap: 16px;
 }
 
+/* Aviso do dia-limite de fechamento mensal — ver OS-016 */
+.aviso-fechamento {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  margin-bottom: 16px;
+  border: 1px solid var(--warning);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--warning) 15%, var(--surface));
+  color: var(--text);
+  font-size: 14px;
+}
+
 /* Card de metas não preenchidas — ver OS-004 */
 .card-alerta {
   border-color: var(--nok);

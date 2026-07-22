@@ -1,9 +1,11 @@
 import { Router } from "express";
 import { z } from "zod";
+import { Prisma, Meta } from "@prisma/client";
 import { prisma } from "../lib/prisma";
 import { authenticate, authorize, resolveSetorId } from "../middleware/auth";
-import { Meta } from "@prisma/client";
+import { badRequest, forbidden } from "../lib/errors";
 import { MESES } from "../lib/metasCalc";
+import { gerarWorkbookExcel } from "../lib/excelExport";
 
 export const relatoriosRouter = Router();
 relatoriosRouter.use(authenticate);
@@ -77,27 +79,27 @@ relatoriosRouter.get("/dashboard", async (req, res, next) => {
       where: { setorId, ano: query.ano, ativo: true, indicador: { icIv: "IC" } },
       include: { indicador: true },
     });
-    const filhosIndicadores = await prisma.indicador.findMany({
+    const ivsIndicadores = await prisma.indicador.findMany({
       where: { paiId: { in: ics.map((ic) => ic.indicadorId) } },
       select: { id: true, paiId: true },
     });
-    const filhosMetas = await prisma.meta.findMany({
-      where: { indicadorId: { in: filhosIndicadores.map((f) => f.id) }, ano: query.ano, ativo: true },
+    const ivsMetas = await prisma.meta.findMany({
+      where: { indicadorId: { in: ivsIndicadores.map((f) => f.id) }, ano: query.ano, ativo: true },
       include: { indicador: true },
     });
-    const filhosPorPaiIndicadorId = new Map<string, typeof filhosMetas>();
-    for (const filhoMeta of filhosMetas) {
-      const paiIndicadorId = filhosIndicadores.find((f) => f.id === filhoMeta.indicadorId)?.paiId;
+    const ivsPorPaiIndicadorId = new Map<string, typeof ivsMetas>();
+    for (const ivMeta of ivsMetas) {
+      const paiIndicadorId = ivsIndicadores.find((f) => f.id === ivMeta.indicadorId)?.paiId;
       if (!paiIndicadorId) continue;
-      const lista = filhosPorPaiIndicadorId.get(paiIndicadorId) ?? [];
-      lista.push(filhoMeta);
-      filhosPorPaiIndicadorId.set(paiIndicadorId, lista);
+      const lista = ivsPorPaiIndicadorId.get(paiIndicadorId) ?? [];
+      lista.push(ivMeta);
+      ivsPorPaiIndicadorId.set(paiIndicadorId, lista);
     }
 
     const icComProblemas = ics
       .map((ic) => {
-        const filhos = filhosPorPaiIndicadorId.get(ic.indicadorId) ?? [];
-        const filhosNok = filhos.filter((f) => f.statusAcum === "nok");
+        const ivs = ivsPorPaiIndicadorId.get(ic.indicadorId) ?? [];
+        const ivsNok = ivs.filter((f) => f.statusAcum === "nok");
         return {
           indicador: ic.indicador.nome,
           unidade: ic.indicador.unidade,
@@ -107,10 +109,10 @@ relatoriosRouter.get("/dashboard", async (req, res, next) => {
             ic.metaAno != null && ic.acumReal != null && !ic.metaAno.isZero()
               ? ic.acumReal.div(ic.metaAno).mul(100).toDecimalPlaces(1)
               : null,
-          filhos_nok: filhosNok.map((f) => f.indicador.nome),
+          ivs_nok: ivsNok.map((f) => f.indicador.nome),
         };
       })
-      .filter((ic) => ic.filhos_nok.length > 0);
+      .filter((ic) => ic.ivs_nok.length > 0);
 
     res.json({
       setor: setor?.nome,
@@ -194,6 +196,77 @@ relatoriosRouter.get("/comparativa", authorize("gerente", "admin"), async (req, 
     const comRanking = resultado.map((r, idx) => ({ ...r, ranking: idx + 1 }));
 
     res.json({ ano: query.ano, periodo: query.periodo, setores: comRanking });
+  } catch (err) {
+    next(err);
+  }
+});
+
+function slugify(texto: string): string {
+  return texto
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
+const exportarExcelQuerySchema = z.object({
+  ano: z.coerce.number().int(),
+  // CSV de UUIDs de setor. responsavel ignora/valida contra o próprio setor; gerente/admin
+  // precisam informar explicitamente (não há um "todos" implícito no backend — o frontend
+  // resolve "Selecionar todos" marcando cada checkbox e enviando a lista completa).
+  setor_ids: z.string().optional(),
+});
+
+// OS: Exportação de Relatório Anual em Excel — reproduz o layout da planilha de referência do
+// cliente (uma aba por setor selecionado), com hierarquia IC->IVs e status ok/nok por mês.
+relatoriosRouter.get("/exportar-excel", async (req, res, next) => {
+  try {
+    const query = exportarExcelQuerySchema.parse(req.query);
+    const usuario = req.usuario!;
+
+    const idsInformados = query.setor_ids
+      ? [...new Set(query.setor_ids.split(",").map((s) => s.trim()).filter(Boolean))]
+      : [];
+
+    let setorIds: string[];
+    if (usuario.role === "responsavel") {
+      if (!usuario.setorId) throw forbidden("Usuário responsável sem setor vinculado");
+      if (idsInformados.length > 0 && (idsInformados.length > 1 || idsInformados[0] !== usuario.setorId)) {
+        throw forbidden("Responsável só pode exportar o próprio setor");
+      }
+      setorIds = [usuario.setorId];
+    } else {
+      if (idsInformados.length === 0) throw badRequest("Selecione ao menos um setor (setor_ids)");
+      setorIds = idsInformados;
+    }
+
+    const setores = await prisma.setor.findMany({ where: { id: { in: setorIds }, ativo: true } });
+    if (setores.length !== setorIds.length) {
+      throw badRequest("Um ou mais setores selecionados não foram encontrados ou estão inativos");
+    }
+
+    const includeRelacoes = { indicador: { include: { produto: true } } } satisfies Prisma.MetaInclude;
+
+    const setoresComMetas = await Promise.all(
+      setores.map(async (setor) => {
+        const metas = await prisma.meta.findMany({
+          where: { setorId: setor.id, ano: query.ano, ativo: true },
+          include: includeRelacoes,
+          orderBy: { ordem: "asc" },
+        });
+        return { setor, metas };
+      })
+    );
+
+    const buffer = await gerarWorkbookExcel(setoresComMetas, query.ano);
+
+    const nomeArquivo =
+      setores.length === 1 ? `farol_${slugify(setores[0].nome)}_${query.ano}.xlsx` : `farol_${query.ano}.xlsx`;
+
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.setHeader("Content-Disposition", `attachment; filename="${nomeArquivo}"`);
+    res.send(Buffer.from(buffer));
   } catch (err) {
     next(err);
   }

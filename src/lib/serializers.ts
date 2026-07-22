@@ -12,7 +12,7 @@ export type MetaComRelacoes = Meta & {
 
 export function serializeMeta(
   meta: MetaComRelacoes,
-  opts?: { paiMetaId?: string | null; filhos?: MetaComRelacoes[] }
+  opts?: { paiMetaId?: string | null; ivs?: MetaComRelacoes[] }
 ) {
   const meses: Record<string, { meta: unknown; real: unknown; status: unknown }> = {};
   for (const mes of MESES) {
@@ -42,7 +42,7 @@ export function serializeMeta(
     responsavel: meta.responsavel,
     unidade: meta.indicador.unidade,
     tipo_meta: meta.tipoMeta,
-    agrega_filhos: meta.indicador.agregaFilhos,
+    agrega_ivs: meta.indicador.agregaIvs,
     tipo_acumulado_meta: meta.indicador.tipoAcumuladoMeta,
     tipo_acumulado_real: meta.indicador.tipoAcumuladoReal,
     tipo_agregacao_meta: meta.indicador.tipoAgregacaoMeta,
@@ -65,9 +65,9 @@ export function serializeMeta(
     ativo: meta.ativo,
     inativado_em: meta.inativadoEm,
     inativado_por_usuario: meta.inativadoPorUsuario?.nome ?? null,
-    ...(meta.indicador.icIv === "IC" && opts?.filhos
+    ...(meta.indicador.icIv === "IC" && opts?.ivs
       ? {
-          filhos: opts.filhos.map((f) => ({
+          ivs: opts.ivs.map((f) => ({
             id: f.id,
             ic_iv: f.indicador.icIv,
             indicador: f.indicador.nome,

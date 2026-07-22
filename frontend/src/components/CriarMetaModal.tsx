@@ -28,7 +28,7 @@ export function CriarMetaModal({
   const [responsavel, setResponsavel] = useState("");
   const [unidade, setUnidade] = useState(UNIDADES[0]);
   const [tipoMeta, setTipoMeta] = useState<TipoMeta>("maior_melhor");
-  const [agregaFilhos, setAgregaFilhos] = useState(false);
+  const [agregaIvs, setAgregaIvs] = useState(false);
   const [tipoAcumulado, setTipoAcumulado] = useState<"soma" | "media">("soma");
   const [tipoAgregacaoMeta, setTipoAgregacaoMeta] = useState<TipoAgregacaoMeta>("soma");
   const [tipoAgregacaoReal, setTipoAgregacaoReal] = useState<TipoAgregacaoReal>("soma");
@@ -46,7 +46,7 @@ export function CriarMetaModal({
     if (!indicador.trim()) return toast.error("Informe o indicador");
     if (!responsavel.trim()) return toast.error("Informe o responsável");
     if (icIv === "IV" && !paiId) return toast.error("IVs precisam de um IC pai");
-    if (icIv === "IC" && agregaFilhos && tipoAgregacaoMeta === "meta_manual" && !metaManualAcum) {
+    if (icIv === "IC" && agregaIvs && tipoAgregacaoMeta === "meta_manual" && !metaManualAcum) {
       return toast.error("Informe o valor da meta manual");
     }
 
@@ -61,11 +61,11 @@ export function CriarMetaModal({
         unidade,
         pai_id: icIv === "IV" ? paiId : undefined,
         produto_id: icIv === "IC" && produtoId ? produtoId : undefined,
-        agrega_filhos: icIv === "IC" ? agregaFilhos : undefined,
+        agrega_ivs: icIv === "IC" ? agregaIvs : undefined,
         tipo_acumulado_meta: tipoAcumulado,
         tipo_acumulado_real: tipoAcumulado,
-        tipo_agregacao_meta: icIv === "IC" && agregaFilhos ? tipoAgregacaoMeta : undefined,
-        tipo_agregacao_real: icIv === "IC" && agregaFilhos ? tipoAgregacaoReal : undefined,
+        tipo_agregacao_meta: icIv === "IC" && agregaIvs ? tipoAgregacaoMeta : undefined,
+        tipo_agregacao_real: icIv === "IC" && agregaIvs ? tipoAgregacaoReal : undefined,
       });
 
       await onSalvar({
@@ -74,7 +74,7 @@ export function CriarMetaModal({
         responsavel: responsavel.trim(),
         tipo_meta: tipoMeta,
         meta_manual_acum:
-          icIv === "IC" && agregaFilhos && tipoAgregacaoMeta === "meta_manual" ? Number(metaManualAcum) : undefined,
+          icIv === "IC" && agregaIvs && tipoAgregacaoMeta === "meta_manual" ? Number(metaManualAcum) : undefined,
         meta_ano: metaAno ? Number(metaAno) : undefined,
       });
     } finally {
@@ -159,12 +159,12 @@ export function CriarMetaModal({
 
           {icIv === "IC" && (
             <label className="form-group form-checkbox">
-              <input type="checkbox" checked={agregaFilhos} onChange={(e) => setAgregaFilhos(e.target.checked)} />
-              Agrega valores dos filhos automaticamente
+              <input type="checkbox" checked={agregaIvs} onChange={(e) => setAgregaIvs(e.target.checked)} />
+              Agrega valores dos IVs automaticamente
             </label>
           )}
 
-          {icIv === "IC" && agregaFilhos && (
+          {icIv === "IC" && agregaIvs && (
             <>
               <label className="form-group">
                 Agregação da Meta
@@ -173,8 +173,8 @@ export function CriarMetaModal({
                   value={tipoAgregacaoMeta}
                   onChange={(e) => setTipoAgregacaoMeta(e.target.value as TipoAgregacaoMeta)}
                 >
-                  <option value="soma">Soma dos filhos</option>
-                  <option value="media">Média dos filhos</option>
+                  <option value="soma">Soma dos IVs</option>
+                  <option value="media">Média dos IVs</option>
                   <option value="meta_manual">Manual (valor fixo)</option>
                 </select>
               </label>
@@ -186,8 +186,8 @@ export function CriarMetaModal({
                   value={tipoAgregacaoReal}
                   onChange={(e) => setTipoAgregacaoReal(e.target.value as TipoAgregacaoReal)}
                 >
-                  <option value="soma">Soma dos filhos</option>
-                  <option value="media">Média dos filhos</option>
+                  <option value="soma">Soma dos IVs</option>
+                  <option value="media">Média dos IVs</option>
                   <option value="proporcao_agregada">Proporção agregada (soma reais / soma metas)</option>
                 </select>
               </label>

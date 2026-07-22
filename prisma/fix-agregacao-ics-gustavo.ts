@@ -5,30 +5,30 @@ const prisma = new PrismaClient()
 
 /**
  * Os ICs "Sistemas", "Equipamentos e Serviços" e "Inventário" do setor Gustavo Borges nunca
- * tiveram "real" preenchido diretamente (agrega_filhos=false) — mas seu real acumulado deveria
- * ser calculado como proporção agregada dos filhos, replicando a fórmula da planilha original:
- *   Acum. Real do IC = SOMA(acum_real dos filhos) / SOMA(acum_meta dos filhos)
+ * tiveram "real" preenchido diretamente (agrega_ivs=false) — mas seu real acumulado deveria
+ * ser calculado como proporção agregada dos IVs, replicando a fórmula da planilha original:
+ *   Acum. Real do IC = SOMA(acum_real dos IVs) / SOMA(acum_meta dos IVs)
  * Isso já existe no sistema como tipo_agregacao_real = "proporcao_agregada", disponível na
- * criação de novos ICs com filhos — este script aplica essa configuração aos 3 ICs já
+ * criação de novos ICs com IVs — este script aplica essa configuração aos 3 ICs já
  * existentes (nos 3 anos) e persiste o valor calculado.
  *
  * A Meta desses ICs continua sendo digitada manualmente mês a mês pelo gerente, exatamente
- * como antes — só o Real passa a ser calculado automaticamente a partir dos filhos. Por isso
+ * como antes — só o Real passa a ser calculado automaticamente a partir dos IVs. Por isso
  * tipo_agregacao_meta = "meta_manual", que nesse sistema significa "a Meta não é derivada dos
- * filhos" (ver recalcularAgregadoIC): a agregação nunca sobrescreve metaJan..Dez, e PUT
- * /metas/:id/meta continua liberado para editar a Meta mês a mês mesmo com agrega_filhos=true.
+ * IVs" (ver recalcularAgregadoIC): a agregação nunca sobrescreve metaJan..Dez, e PUT
+ * /metas/:id/meta continua liberado para editar a Meta mês a mês mesmo com agrega_ivs=true.
  * Este script restaura o valor mensal de Meta que já existia antes (repetindo meta_ano em
  * todos os meses, igual ao dado original da planilha) como ponto de partida editável.
  *
  * tipo_acumulado muda de "soma" para "media": os 12 meses de Real passam a guardar a proporção
- * agregada MENSAL dos filhos (uma razão ~1.0 = ~100%, não uma quantidade); somar 12 meses de
+ * agregada MENSAL dos IVs (uma razão ~1.0 = ~100%, não uma quantidade); somar 12 meses de
  * ~100% daria ~1200% sem sentido em qualquer cálculo que re-acumule a partir dos meses (ex: GET
  * /metas/:id/comparativo, /acumulado-periodo) — média é a agregação correta para uma série de
  * percentuais mensais. A Meta (agora manual) usa a mesma tipo_acumulado, então também é
  * mediada — como todo mês tem o mesmo valor (meta_ano repetido), a média bate com o próprio
  * meta_ano.
  *
- * OS-013: agrega_filhos/tipo_agregacao_meta/tipo_agregacao_real/tipo_acumulado agora vivem em
+ * OS-013: agrega_ivs/tipo_agregacao_meta/tipo_agregacao_real/tipo_acumulado agora vivem em
  * Indicador (fixos entre anos) — só precisam ser trocados uma vez, fora do loop de anos. Os
  * valores mensais/acumulados (por ano) continuam em Meta.
  */
@@ -48,7 +48,7 @@ async function main() {
     await prisma.indicador.update({
       where: { id: indicador.id },
       data: {
-        agregaFilhos: true,
+        agregaIvs: true,
         tipoAgregacaoMeta: 'meta_manual',
         tipoAgregacaoReal: 'proporcao_agregada',
         tipoAcumuladoMeta: 'media',
@@ -64,11 +64,11 @@ async function main() {
         continue
       }
 
-      const filhosIndicadores = await prisma.indicador.findMany({ where: { paiId: indicador.id }, select: { id: true } })
-      const filhos = await prisma.meta.findMany({
-        where: { indicadorId: { in: filhosIndicadores.map((f) => f.id) }, ano, ativo: true },
+      const ivsIndicadores = await prisma.indicador.findMany({ where: { paiId: indicador.id }, select: { id: true } })
+      const ivs = await prisma.meta.findMany({
+        where: { indicadorId: { in: ivsIndicadores.map((f) => f.id) }, ano, ativo: true },
       })
-      const agregado = recalcularAgregadoIC(filhos, {
+      const agregado = recalcularAgregadoIC(ivs, {
         tipoAgregacaoMeta: 'meta_manual',
         tipoAgregacaoReal: 'proporcao_agregada',
         metaManualAcum: null, // não usado mais nesse modo — meta é digitada mês a mês

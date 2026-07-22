@@ -16,13 +16,13 @@ function statusTexto(status: string | null): string {
 }
 
 function montarLinhas(metas: Meta[]): string[][] {
-  const filhosPorPai = new Map<string, Meta[]>();
+  const ivsPorPai = new Map<string, Meta[]>();
   const raiz: Meta[] = [];
   for (const meta of metas) {
     if (meta.pai_id) {
-      const lista = filhosPorPai.get(meta.pai_id) ?? [];
+      const lista = ivsPorPai.get(meta.pai_id) ?? [];
       lista.push(meta);
-      filhosPorPai.set(meta.pai_id, lista);
+      ivsPorPai.set(meta.pai_id, lista);
     } else {
       raiz.push(meta);
     }
@@ -57,8 +57,8 @@ function montarLinhas(metas: Meta[]): string[][] {
       const mostrarProduto = !!meta.produto && meta.produto !== ultimoProduto && nivel === 0;
       if (meta.produto) ultimoProduto = meta.produto;
       linhas.push(linhaDaMeta(meta, nivel, mostrarProduto));
-      const filhos = filhosPorPai.get(meta.id) ?? [];
-      if (filhos.length) processar(filhos, nivel + 1);
+      const ivs = ivsPorPai.get(meta.id) ?? [];
+      if (ivs.length) processar(ivs, nivel + 1);
     }
   }
 

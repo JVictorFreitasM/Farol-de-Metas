@@ -20,6 +20,21 @@ export interface Setor {
   email: string | null;
 }
 
+// OS-016: configuração global de fechamento mensal (singleton) e desbloqueios pontuais por setor/mês.
+export interface ConfiguracaoSistema {
+  dia_limite_preenchimento: number;
+}
+
+export interface DesbloqueioPreenchimento {
+  id: string;
+  setor_id: string;
+  setor: string;
+  ano: number;
+  mes: number; // 1-12
+  liberado_por: string;
+  liberado_em: string;
+}
+
 export type StatusProduto = "ativo" | "inativo";
 
 export interface Produto {
@@ -55,7 +70,7 @@ export interface Indicador {
   pai_id: string | null;
   produto_id: string | null;
   produto: string | null;
-  agrega_filhos: boolean;
+  agrega_ivs: boolean;
   // OS-015: separado por lado — nem sempre Meta e Real seguem a mesma regra de acumulação.
   tipo_acumulado_meta: "soma" | "media" | "manual";
   tipo_acumulado_real: "soma" | "media" | "manual";
@@ -75,7 +90,7 @@ export const MESES_LABEL: Record<Mes, string> = {
   jul: "Jul", ago: "Ago", set: "Set", out: "Out", nov: "Nov", dez: "Dez",
 };
 
-export interface MetaFilho {
+export interface MetaIv {
   id: string;
   ic_iv: IcIv;
   indicador: string;
@@ -107,7 +122,7 @@ export interface Meta {
   responsavel: string;
   unidade: string;
   tipo_meta: TipoMeta;
-  agrega_filhos: boolean;
+  agrega_ivs: boolean;
   tipo_acumulado_meta: "soma" | "media" | "manual";
   tipo_acumulado_real: "soma" | "media" | "manual";
   tipo_agregacao_meta: TipoAgregacaoMeta;
@@ -126,7 +141,7 @@ export interface Meta {
   ativo: boolean;
   inativado_em: string | null;
   inativado_por_usuario: string | null;
-  filhos?: MetaFilho[];
+  ivs?: MetaIv[];
 }
 
 export interface PaginatedResponse<T> {
@@ -155,7 +170,7 @@ export interface DashboardResumo {
     acumulado: string | number;
     meta_ano: string | number | null;
     percentual: string | number | null;
-    filhos_nok: string[];
+    ivs_nok: string[];
   }[];
   metas_incompletas: {
     id: string;

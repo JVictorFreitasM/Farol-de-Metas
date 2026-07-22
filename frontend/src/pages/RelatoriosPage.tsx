@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { toast } from "react-toastify";
 import { AppLayout } from "../components/AppLayout";
 import { RelatorioComparativa } from "../components/RelatorioComparativa";
+import { ExportarExcelModal } from "../components/ExportarExcelModal";
 import { StatusRoscaChart, TendenciaMensalChart } from "../components/DashboardCharts";
 import { useAuth } from "../hooks/useAuth";
 import { gerarOpcoesAno, useAnoSelecionado } from "../hooks/useAnoSelecionado";
@@ -23,13 +24,13 @@ export function RelatoriosPage() {
   );
   const [dados, setDados] = useState<DashboardResumo | null>(null);
   const [comparativa, setComparativa] = useState<ComparativaSetor[]>([]);
+  const [modalExportarAberto, setModalExportarAberto] = useState(false);
 
   useEffect(() => {
-    if (!podeVerComparativa) return;
     listarSetores()
       .then(setSetores)
       .catch((err) => toast.error(err.message));
-  }, [podeVerComparativa]);
+  }, []);
 
   useEffect(() => {
     if (aba === "dashboard") {
@@ -68,6 +69,7 @@ export function RelatoriosPage() {
           </select>
         </label>
       )}
+      <button className="btn-primary" onClick={() => setModalExportarAberto(true)}>Exportar Excel</button>
     </div>
   );
 
@@ -111,7 +113,7 @@ export function RelatoriosPage() {
                     <th>Acumulado</th>
                     <th>Meta</th>
                     <th>%</th>
-                    <th>Filhos NOK</th>
+                    <th>IVs NOK</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -121,7 +123,7 @@ export function RelatoriosPage() {
                       <td>{formatValor(ic.acumulado, ic.unidade)}</td>
                       <td>{formatValor(ic.meta_ano, ic.unidade)}</td>
                       <td>{ic.percentual !== null ? `${ic.percentual}%` : "-"}</td>
-                      <td>{ic.filhos_nok.join(", ")}</td>
+                      <td>{ic.ivs_nok.join(", ")}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -132,6 +134,15 @@ export function RelatoriosPage() {
       )}
 
       {aba === "comparativa" && podeVerComparativa && <RelatorioComparativa setores={comparativa} />}
+
+      {modalExportarAberto && usuario && (
+        <ExportarExcelModal
+          setores={setores}
+          usuario={usuario}
+          anoInicial={ano}
+          onFechar={() => setModalExportarAberto(false)}
+        />
+      )}
     </AppLayout>
   );
 }

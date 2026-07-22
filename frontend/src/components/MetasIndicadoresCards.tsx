@@ -101,11 +101,11 @@ export function MetasIndicadoresCards({
   const isGerente = usuarioRole === "gerente" || usuarioRole === "admin";
   const podeInativar = usuarioRole === "gerente";
   const podeEditarReal = (meta: Meta) =>
-    !meta.agrega_filhos && (isGerente || (usuarioRole === "responsavel" && usuarioSetorId === meta.setor_id));
-  // Meta segue editável mesmo com agrega_filhos=true quando tipo_agregacao_meta="meta_manual"
-  // (só o Real é calculado automaticamente dos filhos nesse caso — a Meta é manual, mês a mês).
+    !meta.agrega_ivs && (isGerente || (usuarioRole === "responsavel" && usuarioSetorId === meta.setor_id));
+  // Meta segue editável mesmo com agrega_ivs=true quando tipo_agregacao_meta="meta_manual"
+  // (só o Real é calculado automaticamente dos IVs nesse caso — a Meta é manual, mês a mês).
   const podeEditarMeta = (meta: Meta) =>
-    (!meta.agrega_filhos || meta.tipo_agregacao_meta === "meta_manual") && isGerente;
+    (!meta.agrega_ivs || meta.tipo_agregacao_meta === "meta_manual") && isGerente;
 
   const isExpandido = (chave: string): boolean => {
     if (chave in expandido) return expandido[chave];
@@ -275,7 +275,7 @@ export function MetasIndicadoresCards({
           ) : (
             <div
               className={`indicador-row-valor-numero ${metaEditavel ? "editable" : "locked"}`}
-              title={meta.agrega_filhos && meta.tipo_agregacao_meta !== "meta_manual" ? "Calculado automaticamente a partir dos IVs filhos" : undefined}
+              title={meta.agrega_ivs && meta.tipo_agregacao_meta !== "meta_manual" ? "Calculado automaticamente a partir dos IVs" : undefined}
               onClick={() => iniciarEdicaoMeta(meta)}
             >
               {formatValor(meta.meses[mes].meta, meta.unidade)}
@@ -302,7 +302,7 @@ export function MetasIndicadoresCards({
           ) : (
             <div
               className={`indicador-row-valor-numero ${editavel ? "editable" : "locked"}`}
-              title={meta.agrega_filhos ? "Calculado automaticamente a partir dos IVs filhos" : undefined}
+              title={meta.agrega_ivs ? "Calculado automaticamente a partir dos IVs" : undefined}
               onClick={() => iniciarEdicao(meta)}
             >
               {formatValor(meta.meses[mes].real, meta.unidade)}
@@ -413,15 +413,15 @@ export function MetasIndicadoresCards({
                 {grupo.itens.map(({ ic, ivs }) => {
                   const chaveI = chaveIc(ic.id);
                   const icExpandido = isExpandido(chaveI);
-                  const temFilhos = ivs.length > 0;
+                  const temIvs = ivs.length > 0;
 
                   return (
                     <div key={ic.id} className="produto-group-item">
                       {renderLinha(ic, {
-                        chevron: temFilhos ? renderChevron(chaveI, icExpandido, `Expandir/Retrair IC: ${ic.indicador}`) : undefined,
-                        contador: temFilhos && !icExpandido ? ivs.length : undefined,
+                        chevron: temIvs ? renderChevron(chaveI, icExpandido, `Expandir/Retrair IC: ${ic.indicador}`) : undefined,
+                        contador: temIvs && !icExpandido ? ivs.length : undefined,
                       })}
-                      {temFilhos && (
+                      {temIvs && (
                         <div className={`colapsavel ${icExpandido ? "" : "colapsado"}`}>
                           <div>{ivs.map((iv) => renderLinha(iv))}</div>
                         </div>

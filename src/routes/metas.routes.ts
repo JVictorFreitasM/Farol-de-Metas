@@ -6,6 +6,7 @@ import { prisma } from "../lib/prisma";
 import { authenticate, authorize, resolveSetorId } from "../middleware/auth";
 import { badRequest, conflict, forbidden, notFound } from "../lib/errors";
 import { registrarAuditoria } from "../lib/auditoria";
+import { garantirMesesAbertos } from "../lib/fechamento";
 import { MetaComRelacoes, serializeMeta } from "../lib/serializers";
 import {
   calcularAcumuladoLinha,
@@ -31,12 +32,12 @@ const includeRelacoes = {
 
 /** Metas filhas (mesmo ano) de um IC agregador — resolvidas via indicador.paiId, já que a
  * hierarquia agora vive em Indicador, não mais como self-relation direta em Meta. */
-async function buscarFilhosMeta(indicadorId: string, ano: number, incluirInativos = false) {
-  const filhosIndicadores = await prisma.indicador.findMany({ where: { paiId: indicadorId }, select: { id: true } });
-  if (filhosIndicadores.length === 0) return [];
+async function buscarIvsMeta(indicadorId: string, ano: number, incluirInativos = false) {
+  const ivsIndicadores = await prisma.indicador.findMany({ where: { paiId: indicadorId }, select: { id: true } });
+  if (ivsIndicadores.length === 0) return [];
   return prisma.meta.findMany({
     where: {
-      indicadorId: { in: filhosIndicadores.map((f) => f.id) },
+      indicadorId: { in: ivsIndicadores.map((f) => f.id) },
       ano,
       ...(incluirInativos ? {} : { ativo: true }),
     },
@@ -44,17 +45,17 @@ async function buscarFilhosMeta(indicadorId: string, ano: number, incluirInativo
   });
 }
 
-/** Se o indicador pai (do mesmo ano) agrega os filhos, recalcula seus meses/acumulados a
- * partir das metas filhas atuais e persiste. Retorna a linha de Meta do pai atualizada. */
+/** Se o indicador pai (do mesmo ano) agrega os IVs, recalcula seus meses/acumulados a
+ * partir das metas dos IVs atuais e persiste. Retorna a linha de Meta do pai atualizada. */
 async function recalcularPaiSeAgrega(paiIndicadorId: string, ano: number, usuarioId: string) {
   const paiIndicador = await prisma.indicador.findUnique({ where: { id: paiIndicadorId } });
-  if (!paiIndicador || !paiIndicador.agregaFilhos) return null;
+  if (!paiIndicador || !paiIndicador.agregaIvs) return null;
 
   const paiMeta = await prisma.meta.findFirst({ where: { indicadorId: paiIndicador.id, ano } });
   if (!paiMeta) return null;
 
-  const filhos = await buscarFilhosMeta(paiIndicador.id, ano, false);
-  const agregado = recalcularAgregadoIC(filhos, {
+  const ivs = await buscarIvsMeta(paiIndicador.id, ano, false);
+  const agregado = recalcularAgregadoIC(ivs, {
     tipoAgregacaoMeta: paiIndicador.tipoAgregacaoMeta,
     tipoAgregacaoReal: paiIndicador.tipoAgregacaoReal,
     metaManualAcum: paiMeta.metaManualAcum,
@@ -72,6 +73,7 @@ async function recalcularPaiSeAgrega(paiIndicadorId: string, ano: number, usuari
     where: { id: paiMeta.id },
     data: {
       ...dataMeses,
+      metaAno: agregado.metaAno,
       acumMeta: agregado.acumMeta,
       acumReal: agregado.acumReal,
       atualizadoPor: usuarioId,
@@ -94,7 +96,7 @@ async function resolverPaiMetaId(meta: MetaComRelacoes): Promise<string | null> 
 }
 
 /** Após alterar meta_x ou real_x de uma linha, recalcula seus acumulados e, se seu indicador
- * tiver um pai com agrega_filhos=true, recalcula os meses e acumulados do pai também. */
+ * tiver um pai com agrega_ivs=true, recalcula os meses e acumulados do pai também. */
 async function recalcularLinhaEPai(metaId: string, usuarioId: string) {
   const meta = await prisma.meta.findUniqueOrThrow({ where: { id: metaId }, include: includeRelacoes });
 
@@ -132,7 +134,7 @@ metasRouter.get("/", async (req, res, next) => {
       orderBy: { ordem: "asc" },
     });
 
-    // Filhos e pai_id resolvidos em memória: todas as metas do setor/ano já foram carregadas
+    // IVs e pai_id resolvidos em memória: todas as metas do setor/ano já foram carregadas
     // juntas, então dá pra casar indicador_id <-> meta.id sem consultas extras.
     const metaIdPorIndicadorId = new Map(metas.map((m) => [m.indicadorId, m.id]));
     const porIndicadorPai = new Map<string, MetaComRelacoes[]>();
@@ -147,7 +149,7 @@ metasRouter.get("/", async (req, res, next) => {
       data: metas.map((m) =>
         serializeMeta(m, {
           paiMetaId: m.indicador.paiId ? metaIdPorIndicadorId.get(m.indicador.paiId) ?? null : null,
-          filhos: m.indicador.icIv === "IC" ? porIndicadorPai.get(m.indicadorId) ?? [] : undefined,
+          ivs: m.indicador.icIv === "IC" ? porIndicadorPai.get(m.indicadorId) ?? [] : undefined,
         })
       ),
     });
@@ -192,9 +194,9 @@ metasRouter.patch("/:id/inativar", authorize("gerente"), async (req, res, next) 
     });
 
     if (meta.indicador.icIv === "IC") {
-      const filhos = await buscarFilhosMeta(meta.indicadorId, meta.ano, false);
+      const ivs = await buscarIvsMeta(meta.indicadorId, meta.ano, false);
       await prisma.meta.updateMany({
-        where: { id: { in: filhos.map((f) => f.id) } },
+        where: { id: { in: ivs.map((f) => f.id) } },
         data: { ativo: false, inativadoEm: new Date(), inativadoPor: usuario.id },
       });
     }
@@ -506,6 +508,12 @@ const mesesSchema = z.object({
   dez: z.number().optional(),
 });
 
+/** Meses presentes num payload de mesesSchema (só os que vieram com valor definido no body). */
+function mesesInformados(payload: z.infer<typeof mesesSchema> | undefined): MesKey[] {
+  if (!payload) return [];
+  return MESES.filter((mes) => payload[mes.toLowerCase() as keyof typeof payload] !== undefined);
+}
+
 const criarMetaSchema = z.object({
   indicador_id: z.string().uuid(),
   ano: z.coerce.number().int(),
@@ -535,14 +543,14 @@ metasRouter.post("/", authorize("gerente"), async (req, res, next) => {
     const existente = await prisma.meta.findFirst({ where: { indicadorId: indicador.id, ano: body.ano } });
     if (existente) throw conflict("Já existe uma meta para este indicador neste ano");
 
-    if (indicador.agregaFilhos && indicador.tipoAgregacaoMeta === "meta_manual" && body.meta_manual_acum == null) {
+    if (indicador.agregaIvs && indicador.tipoAgregacaoMeta === "meta_manual" && body.meta_manual_acum == null) {
       throw badRequest("tipo_agregacao_meta 'meta_manual' requer o campo meta_manual_acum");
     }
     if (indicador.tipoAcumuladoMeta === "manual" && body.acum_meta_manual == null) {
       throw badRequest("Este indicador usa acumulado manual da Meta e requer o campo acum_meta_manual");
     }
     const usaRealManual =
-      indicador.tipoAcumuladoReal === "manual" || (indicador.agregaFilhos && indicador.tipoAgregacaoReal === "real_manual");
+      indicador.tipoAcumuladoReal === "manual" || (indicador.agregaIvs && indicador.tipoAgregacaoReal === "real_manual");
     if (usaRealManual && body.acum_real_manual == null) {
       throw badRequest("Este indicador usa acumulado manual do Real e requer o campo acum_real_manual");
     }
@@ -600,7 +608,7 @@ const editarMetaSchema = z.object({
   // OS-015: edição dos valores fixos de acumulado (indicador.tipo_acumulado_meta/
   // tipo_acumulado_real="manual", ou — só pro lado Real — tipo_agregacao_real="real_manual"
   // num IC agregador). Independentes da Meta mês a mês — não bloqueados pelo guard de "IC
-  // agrega os filhos" abaixo, que só se aplica a meta_ano/meta.
+  // agrega os IVs" abaixo, que só se aplica a meta_ano/meta.
   acum_meta_manual: z.number().optional(),
   acum_real_manual: z.number().optional(),
 });
@@ -614,11 +622,16 @@ metasRouter.put("/:id/meta", authorize("gerente", "admin"), async (req, res, nex
     if (!metaAtual) throw notFound("Meta não encontrada");
 
     // tipo_agregacao_meta="meta_manual": Meta é digitada mês a mês pelo gerente mesmo com
-    // agrega_filhos=true (só o Real é calculado automaticamente dos filhos, nesse caso).
+    // agrega_ivs=true (só o Real é calculado automaticamente dos IVs, nesse caso).
     const alterandoMeta = body.meta_ano !== undefined || body.meta !== undefined;
-    if (alterandoMeta && metaAtual.indicador.agregaFilhos && metaAtual.indicador.tipoAgregacaoMeta !== "meta_manual") {
-      throw conflict("Este IC agrega os valores dos filhos automaticamente e não pode ser editado diretamente.");
+    if (alterandoMeta && metaAtual.indicador.agregaIvs && metaAtual.indicador.tipoAgregacaoMeta !== "meta_manual") {
+      throw conflict("Este IC agrega os valores dos IVs automaticamente e não pode ser editado diretamente.");
     }
+
+    // OS-016: meta_ano representa o ano inteiro, então se qualquer mês do ano já estiver
+    // fechado ela também fica bloqueada — não só os meses explicitamente enviados no payload.
+    const mesesParaChecar = body.meta_ano !== undefined ? [...MESES] : mesesInformados(body.meta);
+    await garantirMesesAbertos(usuario, metaAtual.setorId, metaAtual.ano, mesesParaChecar);
 
     if (body.acum_meta_manual !== undefined && metaAtual.indicador.tipoAcumuladoMeta !== "manual") {
       throw badRequest("Este indicador não usa acumulado manual da Meta (acum_meta_manual)");
@@ -626,7 +639,7 @@ metasRouter.put("/:id/meta", authorize("gerente", "admin"), async (req, res, nex
     if (body.acum_real_manual !== undefined) {
       const usaRealManual =
         metaAtual.indicador.tipoAcumuladoReal === "manual" ||
-        (metaAtual.indicador.agregaFilhos && metaAtual.indicador.tipoAgregacaoReal === "real_manual");
+        (metaAtual.indicador.agregaIvs && metaAtual.indicador.tipoAgregacaoReal === "real_manual");
       if (!usaRealManual) {
         throw badRequest("Este indicador não usa acumulado manual do Real (acum_real_manual)");
       }
@@ -711,7 +724,7 @@ metasRouter.put("/:id/meta-manual", authorize("gerente", "admin"), async (req, r
     editarMetaManualSchema.parse(req.body);
     const meta = await prisma.meta.findUnique({ where: { id: req.params.id }, include: includeRelacoes });
     if (!meta) throw notFound("Meta não encontrada");
-    if (!meta.indicador.agregaFilhos || meta.indicador.tipoAgregacaoMeta !== "meta_manual") {
+    if (!meta.indicador.agregaIvs || meta.indicador.tipoAgregacaoMeta !== "meta_manual") {
       throw conflict("Este indicador não usa meta manual (tipo_agregacao_meta = meta_manual).");
     }
     throw conflict("A meta deste indicador é editada mês a mês diretamente na tabela, não como um valor único acumulado.");
@@ -736,9 +749,13 @@ metasRouter.put("/:id/real", authorize("responsavel", "gerente", "admin"), async
       throw forbidden("Acesso negado a outro setor");
     }
 
-    if (metaAtual.indicador.agregaFilhos) {
-      throw conflict("Este IC agrega os valores dos filhos automaticamente e não pode ser editado diretamente.");
+    if (metaAtual.indicador.agregaIvs) {
+      throw conflict("Este IC agrega os valores dos IVs automaticamente e não pode ser editado diretamente.");
     }
+
+    // OS-016: só bloqueia os meses efetivamente enviados no payload (diferente de meta_ano, o
+    // Real não tem um campo "ano inteiro" que precise ser protegido por tabela).
+    await garantirMesesAbertos(usuario, metaAtual.setorId, metaAtual.ano, mesesInformados(body.real));
 
     if (metaAtual.tipoMeta === "maior_melhor") {
       for (const [campo, valor] of Object.entries(body.real)) {
@@ -809,18 +826,18 @@ metasRouter.delete("/:id", authorize("gerente", "admin"), async (req, res, next)
     if (!meta) throw notFound("Meta não encontrada");
 
     await prisma.$transaction(async (tx) => {
-      const filhosIndicadores =
+      const ivsIndicadores =
         meta.indicador.icIv === "IC"
           ? await tx.indicador.findMany({ where: { paiId: meta.indicadorId }, select: { id: true } })
           : [];
-      const filhosMetas =
-        filhosIndicadores.length > 0
+      const ivsMetas =
+        ivsIndicadores.length > 0
           ? await tx.meta.findMany({
-              where: { indicadorId: { in: filhosIndicadores.map((f) => f.id) }, ano: meta.ano },
+              where: { indicadorId: { in: ivsIndicadores.map((f) => f.id) }, ano: meta.ano },
               select: { id: true },
             })
           : [];
-      const idsParaRemover = [meta.id, ...filhosMetas.map((f) => f.id)];
+      const idsParaRemover = [meta.id, ...ivsMetas.map((f) => f.id)];
 
       await tx.metaHistorico.deleteMany({ where: { metasId: { in: idsParaRemover } } });
       await tx.meta.deleteMany({ where: { id: { in: idsParaRemover } } });
@@ -976,22 +993,22 @@ metasRouter.post("/importar-ano", authorize("gerente", "admin"), async (req, res
       // Acum_meta de cada linha nova (real fica vazio no ano importado).
       for (const meta of criadas) {
         const indicador = metasOrigem.find((m) => m.indicadorId === meta.indicadorId)!.indicador;
-        if (!(indicador.icIv === "IC" && indicador.agregaFilhos)) {
+        if (!(indicador.icIv === "IC" && indicador.agregaIvs)) {
           await tx.meta.update({
             where: { id: meta.id },
             data: { acumMeta: calcularAcumuladoLinha({ ...meta, indicador }, "meta") },
           });
         }
       }
-      // ICs que agregam filhos: recalcula a partir dos IVs recém-criados.
+      // ICs que agregam IVs: recalcula a partir dos IVs recém-criados.
       for (const meta of criadas) {
         const indicador = metasOrigem.find((m) => m.indicadorId === meta.indicadorId)!.indicador;
-        if (indicador.icIv === "IC" && indicador.agregaFilhos) {
-          const filhosIndicadores = await tx.indicador.findMany({ where: { paiId: indicador.id }, select: { id: true } });
-          const filhos = await tx.meta.findMany({
-            where: { indicadorId: { in: filhosIndicadores.map((f) => f.id) }, ano: body.ano_destino },
+        if (indicador.icIv === "IC" && indicador.agregaIvs) {
+          const ivsIndicadores = await tx.indicador.findMany({ where: { paiId: indicador.id }, select: { id: true } });
+          const ivs = await tx.meta.findMany({
+            where: { indicadorId: { in: ivsIndicadores.map((f) => f.id) }, ano: body.ano_destino },
           });
-          const agregado = recalcularAgregadoIC(filhos, {
+          const agregado = recalcularAgregadoIC(ivs, {
             tipoAgregacaoMeta: indicador.tipoAgregacaoMeta,
             tipoAgregacaoReal: indicador.tipoAgregacaoReal,
             metaManualAcum: meta.metaManualAcum,
@@ -1000,7 +1017,10 @@ metasRouter.post("/importar-ano", authorize("gerente", "admin"), async (req, res
           const dataMeses = Object.fromEntries(
             MESES.map((mes) => [`meta${mes}`, agregado.metaPorMes ? agregado.metaPorMes[mes] : undefined])
           );
-          await tx.meta.update({ where: { id: meta.id }, data: { ...dataMeses, acumMeta: agregado.acumMeta } });
+          await tx.meta.update({
+            where: { id: meta.id },
+            data: { ...dataMeses, metaAno: agregado.metaAno, acumMeta: agregado.acumMeta },
+          });
         }
       }
 

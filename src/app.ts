@@ -9,6 +9,7 @@ import { auditoriaRouter } from "./routes/auditoria.routes";
 import { setoresRouter } from "./routes/setores.routes";
 import { produtosRouter } from "./routes/produtos.routes";
 import { indicadoresRouter } from "./routes/indicadores.routes";
+import { configuracoesRouter } from "./routes/configuracoes.routes";
 import { errorHandler } from "./middleware/errorHandler";
 
 export const app = express();
@@ -48,5 +49,6 @@ app.use("/auditoria", auditoriaRouter);
 app.use("/setores", setoresRouter);
 app.use("/produtos", produtosRouter);
 app.use("/indicadores", indicadoresRouter);
+app.use("/configuracoes", configuracoesRouter);
 
 app.use(errorHandler);

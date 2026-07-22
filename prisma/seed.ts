@@ -110,7 +110,7 @@ async function seedVendasDemo() {
       icIv: 'IC',
       nome: 'Resultados do Mês',
       unidade: 'UN',
-      agregaFilhos: false,
+      agregaIvs: false,
       tipoAcumuladoMeta: 'soma',
       tipoAcumuladoReal: 'soma',
     },
@@ -157,7 +157,7 @@ async function seedVendasDemo() {
         paiId: indicadorIc.id,
         nome: iv.indicador,
         unidade: iv.unidade,
-        agregaFilhos: false,
+        agregaIvs: false,
         tipoAcumuladoMeta: 'soma',
         tipoAcumuladoReal: 'soma',
       },
@@ -194,6 +194,13 @@ async function seedVendasDemo() {
 
 async function main() {
   console.log('🌱 Iniciando seed...\n')
+
+  // 0. Configuração do sistema (OS-016) — tabela singleton, cria só se ainda não existir.
+  const configExistente = await prisma.configuracaoSistema.findFirst()
+  if (!configExistente) {
+    await prisma.configuracaoSistema.create({ data: { diaLimitePreenchimento: 15 } })
+    console.log('⚙️  Configuração do sistema criada (dia_limite_preenchimento = 15)\n')
+  }
 
   // 1. Setores
   console.log('📍 Criando setores...')
@@ -272,7 +279,7 @@ async function main() {
         icIv: 'IC',
         nome: m.indicador,
         unidade: m.unidade,
-        agregaFilhos: m.agrega_filhos,
+        agregaIvs: m.agrega_ivs,
         tipoAcumuladoMeta: m.tipo_acumulado_meta,
         tipoAcumuladoReal: m.tipo_acumulado_real,
         tipoAgregacaoMeta: m.tipo_agregacao_meta ?? 'soma',
@@ -310,7 +317,7 @@ async function main() {
         paiId: paiId || undefined,
         nome: m.indicador,
         unidade: m.unidade,
-        agregaFilhos: false,
+        agregaIvs: false,
         tipoAcumuladoMeta: m.tipo_acumulado_meta,
         tipoAcumuladoReal: m.tipo_acumulado_real,
       },

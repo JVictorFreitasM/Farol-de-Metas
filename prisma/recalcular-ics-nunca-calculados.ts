@@ -5,25 +5,25 @@ const prisma = new PrismaClient()
 
 /**
  * O script de seed original (prisma/seed.ts) grava os valores de meta/real de cada linha
- * diretamente a partir da planilha Excel — inclusive para ICs com agrega_filhos=true, cujo
- * valor deveria ser CALCULADO a partir dos filhos (via recalcularAgregadoIC), não copiado da
+ * diretamente a partir da planilha Excel — inclusive para ICs com agrega_ivs=true, cujo
+ * valor deveria ser CALCULADO a partir dos IVs (via recalcularAgregadoIC), não copiado da
  * planilha. Quando a planilha não trazia um valor para o próprio IC (comum, já que o Excel às
- * vezes só tinha os filhos preenchidos), o IC fica com acum_meta/acum_real nulos para sempre —
- * "nunca calculado" — até alguém editar um filho (o que dispara o recálculo automático do pai).
+ * vezes só tinha os IVs preenchidos), o IC fica com acum_meta/acum_real nulos para sempre —
+ * "nunca calculado" — até alguém editar um IV (o que dispara o recálculo automático do pai).
  *
- * Este script varre todos os ICs com agrega_filhos=true cujo acum_meta E acum_real estão nulos
+ * Este script varre todos os ICs com agrega_ivs=true cujo acum_meta E acum_real estão nulos
  * (nunca foram calculados) e roda a agregação já configurada em cada um (tipo_agregacao_meta/
  * tipo_agregacao_real, sem alterar a configuração — diferente do fix dos ICs do Gustavo Borges,
- * que precisou trocar a configuração). Idempotente: como sempre recalcula a partir dos filhos
+ * que precisou trocar a configuração). Idempotente: como sempre recalcula a partir dos IVs
  * atuais, pode ser rodado de novo sem problema (só não faz nada em ICs que já têm valor).
  *
- * OS-013: agrega_filhos/tipo_agregacao_meta/tipo_agregacao_real agora vivem em Indicador —
- * o candidato é filtrado via a relação `indicador`, e os filhos são resolvidos por
- * indicador.filhos (hierarquia fixa) restrita ao mesmo ano do IC.
+ * OS-013: agrega_ivs/tipo_agregacao_meta/tipo_agregacao_real agora vivem em Indicador —
+ * o candidato é filtrado via a relação `indicador`, e os IVs são resolvidos por
+ * indicador.ivs (hierarquia fixa) restrita ao mesmo ano do IC.
  */
 async function main() {
   const candidatos = await prisma.meta.findMany({
-    where: { indicador: { icIv: 'IC', agregaFilhos: true }, ativo: true, acumMeta: null, acumReal: null },
+    where: { indicador: { icIv: 'IC', agregaIvs: true }, ativo: true, acumMeta: null, acumReal: null },
     include: { indicador: true },
     orderBy: [{ ano: 'asc' }],
   })
@@ -36,16 +36,16 @@ async function main() {
   console.log(`Encontrados ${candidatos.length} ICs agregadores nunca calculados:\n`)
 
   for (const ic of candidatos) {
-    const filhosIndicadores = await prisma.indicador.findMany({ where: { paiId: ic.indicadorId }, select: { id: true } })
-    const filhos = await prisma.meta.findMany({
-      where: { indicadorId: { in: filhosIndicadores.map((f) => f.id) }, ano: ic.ano, ativo: true },
+    const ivsIndicadores = await prisma.indicador.findMany({ where: { paiId: ic.indicadorId }, select: { id: true } })
+    const ivs = await prisma.meta.findMany({
+      where: { indicadorId: { in: ivsIndicadores.map((f) => f.id) }, ano: ic.ano, ativo: true },
     })
-    if (filhos.length === 0) {
-      console.log(`   ⚠️ [${ic.ano}] "${ic.indicador.nome}" não tem filhos ativos, pulando.`)
+    if (ivs.length === 0) {
+      console.log(`   ⚠️ [${ic.ano}] "${ic.indicador.nome}" não tem IVs ativos, pulando.`)
       continue
     }
 
-    const agregado = recalcularAgregadoIC(filhos, {
+    const agregado = recalcularAgregadoIC(ivs, {
       tipoAgregacaoMeta: ic.indicador.tipoAgregacaoMeta,
       tipoAgregacaoReal: ic.indicador.tipoAgregacaoReal,
       metaManualAcum: ic.metaManualAcum,
@@ -59,10 +59,10 @@ async function main() {
 
     await prisma.meta.update({
       where: { id: ic.id },
-      data: { ...dataMeses, acumMeta: agregado.acumMeta, acumReal: agregado.acumReal },
+      data: { ...dataMeses, metaAno: agregado.metaAno, acumMeta: agregado.acumMeta, acumReal: agregado.acumReal },
     })
 
-    console.log(`   ✓ [${ic.ano}] "${ic.indicador.nome}" (${filhos.length} filhos): acumMeta=${agregado.acumMeta} acumReal=${agregado.acumReal}`)
+    console.log(`   ✓ [${ic.ano}] "${ic.indicador.nome}" (${ivs.length} IVs): acumMeta=${agregado.acumMeta} acumReal=${agregado.acumReal}`)
   }
 
   console.log('\n✅ Concluído!')

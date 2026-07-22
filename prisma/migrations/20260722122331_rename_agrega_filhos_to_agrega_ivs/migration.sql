@@ -1,0 +1,71 @@
+-- Rename de nomenclatura: "filhos" -> "IVs" em toda a base (código, comentários e agora o
+-- próprio campo). v_metas_completa referencia "agrega_filhos" diretamente e precisa ser
+-- recriada com o novo nome de coluna.
+DROP VIEW "v_metas_completa";
+
+ALTER TABLE "indicadores" RENAME COLUMN "agrega_filhos" TO "agrega_ivs";
+
+CREATE VIEW "v_metas_completa" AS
+ SELECT m.id,
+    m.setor_id,
+    s.nome AS nome_setor,
+    m.ano,
+    m.ordem,
+    i.produto_id,
+    p.nome AS nome_produto,
+    i.ic_iv,
+    i.pai_id,
+    i.nome AS indicador,
+    m.responsavel,
+    i.unidade,
+    m.tipo_meta,
+    i.agrega_ivs,
+    i.tipo_acumulado_meta,
+    i.tipo_acumulado_real,
+    m.meta_ano,
+    m.meta_jan,
+    m.real_jan,
+    m.status_jan,
+    m.meta_fev,
+    m.real_fev,
+    m.status_fev,
+    m.meta_mar,
+    m.real_mar,
+    m.status_mar,
+    m.meta_abr,
+    m.real_abr,
+    m.status_abr,
+    m.meta_mai,
+    m.real_mai,
+    m.status_mai,
+    m.meta_jun,
+    m.real_jun,
+    m.status_jun,
+    m.meta_jul,
+    m.real_jul,
+    m.status_jul,
+    m.meta_ago,
+    m.real_ago,
+    m.status_ago,
+    m.meta_set,
+    m.real_set,
+    m.status_set,
+    m.meta_out,
+    m.real_out,
+    m.status_out,
+    m.meta_nov,
+    m.real_nov,
+    m.status_nov,
+    m.meta_dez,
+    m.real_dez,
+    m.status_dez,
+    m.acum_meta,
+    m.acum_real,
+    m.status_acum,
+    m.criado_em,
+    m.atualizado_em,
+    m.atualizado_por
+   FROM (((metas m
+     JOIN setores s ON ((m.setor_id = s.id)))
+     JOIN indicadores i ON ((m.indicador_id = i.id)))
+     LEFT JOIN produtos p ON ((i.produto_id = p.id)));
