@@ -1,0 +1,66 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: farol
+      POSTGRES_PASSWORD: farol
+      POSTGRES_DB: farol
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U farol -d farol"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - farol
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql://farol:farol@db:5432/farol?schema=public
+      PORT: 3000
+    command: sh -c "npx prisma migrate deploy && npx ts-node-dev --respawn --transpile-only --poll src/server.ts"
+    volumes:
+      - ./src:/app/src
+      - ./prisma:/app/prisma
+      - ./tsconfig.json:/app/tsconfig.json
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - farol
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      VITE_DOCKER: "true"
+      VITE_API_PROXY_TARGET: http://backend:3000
+      VITE_HMR_CLIENT_PORT: "5174"
+      VITE_WATCH_USE_POLLING: "true"
+    volumes:
+      - ./frontend/src:/app/src
+      - ./frontend/index.html:/app/index.html
+      - ./frontend/vite.config.ts:/app/vite.config.ts
+      - ./frontend/tsconfig.json:/app/tsconfig.json
+    ports:
+      - "127.0.0.1:5174:5173"
+    depends_on:
+      - backend
+    networks:
+      - farol
+
+networks:
+  farol:
+
+volumes:
+  db_data:

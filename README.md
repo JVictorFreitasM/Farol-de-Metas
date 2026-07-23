@@ -115,6 +115,61 @@ cd frontend
 npm run dev
 ```
 
+## 🐳 Docker (ambiente local)
+
+Sobe banco de dados, backend e frontend em containers, sem precisar instalar Node ou PostgreSQL na máquina. Ambiente de desenvolvimento (hot-reload); a configuração de produção será tratada separadamente.
+
+### Pré-requisitos
+
+- Docker + Docker Compose
+
+### Subir o ambiente
+
+```bash
+cp .env.example .env
+docker compose up
+```
+
+Ao subir, o backend aguarda o banco ficar pronto, aplica as migrations do Prisma automaticamente (`prisma migrate deploy`) e só então inicia a API. Não é preciso rodar nenhum passo manual de banco.
+
+### Acesso
+
+Todo o sistema (frontend + API) fica disponível em um único endereço:
+
+```
+http://localhost:5174
+```
+
+- O frontend é servido pelo Vite em modo dev (hot-reload) e expõe a única porta publicada no host: `5174`.
+- As chamadas para `/api` são resolvidas pelo próprio proxy do Vite, que dentro do Docker aponta para o container do backend (`http://backend:3000`).
+- O backend não publica porta própria no host — só é acessível pela rede interna do Docker Compose.
+- O banco de dados não publica porta no host — só é acessível pelo backend, pelo nome do serviço `db`.
+- A porta `5173` não é utilizada por nenhum container deste projeto.
+
+### Popular o banco (seed)
+
+```bash
+docker compose exec backend npm run prisma:seed
+```
+
+### Acessar o banco sem porta exposta
+
+O Postgres não expõe porta no host por design. Para inspecionar dados:
+
+```bash
+# psql dentro do container do banco
+docker compose exec db psql -U farol -d farol
+
+# Prisma Studio — publica a porta 5555 temporariamente só nesse comando
+docker compose run --rm -p 5555:5555 backend npx prisma studio
+```
+
+### Persistência e hot-reload
+
+- Os dados do Postgres persistem no volume nomeado `db_data` entre `docker compose down` e `docker compose up`.
+- Alterações em `src/` (backend) ou `frontend/src/` refletem automaticamente, sem rebuild de imagem.
+- Rebuild só é necessário ao alterar dependências (`package.json`): `docker compose up --build`.
+
 ## 📡 API
 
 Todas as rotas (exceto `/health` e `/auth/login`) exigem `Authorization: Bearer <token>`.
