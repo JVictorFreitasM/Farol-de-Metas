@@ -187,26 +187,35 @@ metasRouter.patch("/:id/inativar", authorize("gerente"), async (req, res, next) 
     if (!meta) throw notFound("Indicador não encontrado");
     if (!meta.ativo) throw conflict("Este indicador já está inativo");
 
-    const metaInativada = await prisma.meta.update({
-      where: { id: meta.id },
-      data: { ativo: false, inativadoEm: new Date(), inativadoPor: usuario.id },
-      include: includeRelacoes,
-    });
+    const ivs = meta.indicador.icIv === "IC" ? await buscarIvsMeta(meta.indicadorId, meta.ano, false) : [];
 
-    if (meta.indicador.icIv === "IC") {
-      const ivs = await buscarIvsMeta(meta.indicadorId, meta.ano, false);
-      await prisma.meta.updateMany({
-        where: { id: { in: ivs.map((f) => f.id) } },
+    const metaInativada = await prisma.$transaction(async (tx) => {
+      const metaInativada = await tx.meta.update({
+        where: { id: meta.id },
         data: { ativo: false, inativadoEm: new Date(), inativadoPor: usuario.id },
+        include: includeRelacoes,
       });
-    }
 
-    await registrarAuditoria(req, {
-      acao: "UPDATE",
-      tabela: "metas",
-      registroId: meta.id,
-      setorId: meta.setorId,
-      detalhes: { acao: "inativado", motivo: typeof req.body?.motivo === "string" ? req.body.motivo : null },
+      if (ivs.length > 0) {
+        await tx.meta.updateMany({
+          where: { id: { in: ivs.map((f) => f.id) } },
+          data: { ativo: false, inativadoEm: new Date(), inativadoPor: usuario.id },
+        });
+      }
+
+      await registrarAuditoria(
+        req,
+        {
+          acao: "UPDATE",
+          tabela: "metas",
+          registroId: meta.id,
+          setorId: meta.setorId,
+          detalhes: { acao: "inativado", motivo: typeof req.body?.motivo === "string" ? req.body.motivo : null },
+        },
+        tx
+      );
+
+      return metaInativada;
     });
 
     res.json({
@@ -224,18 +233,20 @@ metasRouter.patch("/:id/ativar", authorize("gerente"), async (req, res, next) =>
     if (!meta) throw notFound("Indicador não encontrado");
     if (meta.ativo) throw conflict("Este indicador já está ativo");
 
-    const metaAtivada = await prisma.meta.update({
-      where: { id: meta.id },
-      data: { ativo: true, inativadoEm: null, inativadoPor: null },
-      include: includeRelacoes,
-    });
+    const metaAtivada = await prisma.$transaction(async (tx) => {
+      const metaAtivada = await tx.meta.update({
+        where: { id: meta.id },
+        data: { ativo: true, inativadoEm: null, inativadoPor: null },
+        include: includeRelacoes,
+      });
 
-    await registrarAuditoria(req, {
-      acao: "UPDATE",
-      tabela: "metas",
-      registroId: meta.id,
-      setorId: meta.setorId,
-      detalhes: { acao: "ativado" },
+      await registrarAuditoria(
+        req,
+        { acao: "UPDATE", tabela: "metas", registroId: meta.id, setorId: meta.setorId, detalhes: { acao: "ativado" } },
+        tx
+      );
+
+      return metaAtivada;
     });
 
     res.json({
@@ -555,40 +566,39 @@ metasRouter.post("/", authorize("gerente"), async (req, res, next) => {
       throw badRequest("Este indicador usa acumulado manual do Real e requer o campo acum_real_manual");
     }
 
-    const meta = await prisma.meta.create({
-      data: {
-        setorId: indicador.setorId,
-        indicadorId: indicador.id,
-        ano: body.ano,
-        ordem: body.ordem,
-        responsavel: body.responsavel,
-        tipoMeta: body.tipo_meta,
-        metaManualAcum: body.meta_manual_acum,
-        acumMetaManual: body.acum_meta_manual,
-        acumRealManual: body.acum_real_manual,
-        metaAno: body.meta_ano,
-        metaJan: body.meta?.jan,
-        metaFev: body.meta?.fev,
-        metaMar: body.meta?.mar,
-        metaAbr: body.meta?.abr,
-        metaMai: body.meta?.mai,
-        metaJun: body.meta?.jun,
-        metaJul: body.meta?.jul,
-        metaAgo: body.meta?.ago,
-        metaSet: body.meta?.set,
-        metaOut: body.meta?.out,
-        metaNov: body.meta?.nov,
-        metaDez: body.meta?.dez,
-        atualizadoPor: usuario.id,
-      },
-      include: includeRelacoes,
-    });
+    const meta = await prisma.$transaction(async (tx) => {
+      const meta = await tx.meta.create({
+        data: {
+          setorId: indicador.setorId,
+          indicadorId: indicador.id,
+          ano: body.ano,
+          ordem: body.ordem,
+          responsavel: body.responsavel,
+          tipoMeta: body.tipo_meta,
+          metaManualAcum: body.meta_manual_acum,
+          acumMetaManual: body.acum_meta_manual,
+          acumRealManual: body.acum_real_manual,
+          metaAno: body.meta_ano,
+          metaJan: body.meta?.jan,
+          metaFev: body.meta?.fev,
+          metaMar: body.meta?.mar,
+          metaAbr: body.meta?.abr,
+          metaMai: body.meta?.mai,
+          metaJun: body.meta?.jun,
+          metaJul: body.meta?.jul,
+          metaAgo: body.meta?.ago,
+          metaSet: body.meta?.set,
+          metaOut: body.meta?.out,
+          metaNov: body.meta?.nov,
+          metaDez: body.meta?.dez,
+          atualizadoPor: usuario.id,
+        },
+        include: includeRelacoes,
+      });
 
-    await registrarAuditoria(req, {
-      acao: "CREATE",
-      tabela: "metas",
-      registroId: meta.id,
-      setorId: meta.setorId,
+      await registrarAuditoria(req, { acao: "CREATE", tabela: "metas", registroId: meta.id, setorId: meta.setorId }, tx);
+
+      return meta;
     });
 
     const paiAtualizado = await recalcularLinhaEPai(meta.id, usuario.id);
@@ -656,44 +666,52 @@ metasRouter.put("/:id/meta", authorize("gerente", "admin"), async (req, res, nex
 
     const valoresAntes = { ...metaAtual };
 
-    const metaAtualizada = await prisma.meta.update({
-      where: { id: metaAtual.id },
-      data: {
-        metaAno: body.meta_ano,
-        metaJan: body.meta?.jan,
-        metaFev: body.meta?.fev,
-        metaMar: body.meta?.mar,
-        metaAbr: body.meta?.abr,
-        metaMai: body.meta?.mai,
-        metaJun: body.meta?.jun,
-        metaJul: body.meta?.jul,
-        metaAgo: body.meta?.ago,
-        metaSet: body.meta?.set,
-        metaOut: body.meta?.out,
-        metaNov: body.meta?.nov,
-        metaDez: body.meta?.dez,
-        acumMetaManual: body.acum_meta_manual,
-        acumRealManual: body.acum_real_manual,
-        atualizadoPor: usuario.id,
-      },
-    });
+    const metaAtualizada = await prisma.$transaction(async (tx) => {
+      const metaAtualizada = await tx.meta.update({
+        where: { id: metaAtual.id },
+        data: {
+          metaAno: body.meta_ano,
+          metaJan: body.meta?.jan,
+          metaFev: body.meta?.fev,
+          metaMar: body.meta?.mar,
+          metaAbr: body.meta?.abr,
+          metaMai: body.meta?.mai,
+          metaJun: body.meta?.jun,
+          metaJul: body.meta?.jul,
+          metaAgo: body.meta?.ago,
+          metaSet: body.meta?.set,
+          metaOut: body.meta?.out,
+          metaNov: body.meta?.nov,
+          metaDez: body.meta?.dez,
+          acumMetaManual: body.acum_meta_manual,
+          acumRealManual: body.acum_real_manual,
+          atualizadoPor: usuario.id,
+        },
+      });
 
-    await prisma.metaHistorico.create({
-      data: {
-        metasId: metaAtualizada.id,
-        versao: (await prisma.metaHistorico.count({ where: { metasId: metaAtualizada.id } })) + 1,
-        valoresAntes: JSON.parse(JSON.stringify(valoresAntes)),
-        valoresDepois: JSON.parse(JSON.stringify(metaAtualizada)),
-        alteradoPor: usuario.id,
-      },
-    });
+      await tx.metaHistorico.create({
+        data: {
+          metasId: metaAtualizada.id,
+          versao: (await tx.metaHistorico.count({ where: { metasId: metaAtualizada.id } })) + 1,
+          valoresAntes: JSON.parse(JSON.stringify(valoresAntes)),
+          valoresDepois: JSON.parse(JSON.stringify(metaAtualizada)),
+          alteradoPor: usuario.id,
+        },
+      });
 
-    await registrarAuditoria(req, {
-      acao: "UPDATE",
-      tabela: "metas",
-      registroId: metaAtualizada.id,
-      setorId: metaAtualizada.setorId,
-      detalhes: { campos_alterados: body },
+      await registrarAuditoria(
+        req,
+        {
+          acao: "UPDATE",
+          tabela: "metas",
+          registroId: metaAtualizada.id,
+          setorId: metaAtualizada.setorId,
+          detalhes: { campos_alterados: body },
+        },
+        tx
+      );
+
+      return metaAtualizada;
     });
 
     const paiAtualizado = await recalcularLinhaEPai(metaAtualizada.id, usuario.id);
@@ -767,41 +785,49 @@ metasRouter.put("/:id/real", authorize("responsavel", "gerente", "admin"), async
 
     const valoresAntes = { ...metaAtual };
 
-    const metaAtualizada = await prisma.meta.update({
-      where: { id: metaAtual.id },
-      data: {
-        realJan: body.real.jan,
-        realFev: body.real.fev,
-        realMar: body.real.mar,
-        realAbr: body.real.abr,
-        realMai: body.real.mai,
-        realJun: body.real.jun,
-        realJul: body.real.jul,
-        realAgo: body.real.ago,
-        realSet: body.real.set,
-        realOut: body.real.out,
-        realNov: body.real.nov,
-        realDez: body.real.dez,
-        atualizadoPor: usuario.id,
-      },
-    });
+    const metaAtualizada = await prisma.$transaction(async (tx) => {
+      const metaAtualizada = await tx.meta.update({
+        where: { id: metaAtual.id },
+        data: {
+          realJan: body.real.jan,
+          realFev: body.real.fev,
+          realMar: body.real.mar,
+          realAbr: body.real.abr,
+          realMai: body.real.mai,
+          realJun: body.real.jun,
+          realJul: body.real.jul,
+          realAgo: body.real.ago,
+          realSet: body.real.set,
+          realOut: body.real.out,
+          realNov: body.real.nov,
+          realDez: body.real.dez,
+          atualizadoPor: usuario.id,
+        },
+      });
 
-    await prisma.metaHistorico.create({
-      data: {
-        metasId: metaAtualizada.id,
-        versao: (await prisma.metaHistorico.count({ where: { metasId: metaAtualizada.id } })) + 1,
-        valoresAntes: JSON.parse(JSON.stringify(valoresAntes)),
-        valoresDepois: JSON.parse(JSON.stringify(metaAtualizada)),
-        alteradoPor: usuario.id,
-      },
-    });
+      await tx.metaHistorico.create({
+        data: {
+          metasId: metaAtualizada.id,
+          versao: (await tx.metaHistorico.count({ where: { metasId: metaAtualizada.id } })) + 1,
+          valoresAntes: JSON.parse(JSON.stringify(valoresAntes)),
+          valoresDepois: JSON.parse(JSON.stringify(metaAtualizada)),
+          alteradoPor: usuario.id,
+        },
+      });
 
-    await registrarAuditoria(req, {
-      acao: "UPDATE",
-      tabela: "metas",
-      registroId: metaAtualizada.id,
-      setorId: metaAtualizada.setorId,
-      detalhes: { campos_alterados: body },
+      await registrarAuditoria(
+        req,
+        {
+          acao: "UPDATE",
+          tabela: "metas",
+          registroId: metaAtualizada.id,
+          setorId: metaAtualizada.setorId,
+          detalhes: { campos_alterados: body },
+        },
+        tx
+      );
+
+      return metaAtualizada;
     });
 
     const paiAtualizado = await recalcularLinhaEPai(metaAtualizada.id, usuario.id);
@@ -841,13 +867,8 @@ metasRouter.delete("/:id", authorize("gerente", "admin"), async (req, res, next)
 
       await tx.metaHistorico.deleteMany({ where: { metasId: { in: idsParaRemover } } });
       await tx.meta.deleteMany({ where: { id: { in: idsParaRemover } } });
-    });
 
-    await registrarAuditoria(req, {
-      acao: "DELETE",
-      tabela: "metas",
-      registroId: meta.id,
-      setorId: meta.setorId,
+      await registrarAuditoria(req, { acao: "DELETE", tabela: "metas", registroId: meta.id, setorId: meta.setorId }, tx);
     });
 
     const paiAtualizado = meta.indicador.paiId
@@ -1024,20 +1045,22 @@ metasRouter.post("/importar-ano", authorize("gerente", "admin"), async (req, res
         }
       }
 
+      for (const meta of criadas) {
+        await registrarAuditoria(
+          req,
+          {
+            acao: "CREATE",
+            tabela: "metas",
+            registroId: meta.id,
+            setorId,
+            detalhes: { origem: "importacao_ano", ano_origem: body.ano_origem, ano_destino: body.ano_destino },
+          },
+          tx
+        );
+      }
+
       return criadas;
     });
-
-    await Promise.all(
-      novasMetas.map((meta) =>
-        registrarAuditoria(req, {
-          acao: "CREATE",
-          tabela: "metas",
-          registroId: meta.id,
-          setorId,
-          detalhes: { origem: "importacao_ano", ano_origem: body.ano_origem, ano_destino: body.ano_destino },
-        })
-      )
-    );
 
     res.status(201).json({
       sucesso: true,

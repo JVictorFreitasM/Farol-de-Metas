@@ -43,6 +43,7 @@ export interface EditarIndicadorBody {
   tipo_agregacao_meta?: TipoAgregacaoMeta;
   tipo_agregacao_real?: TipoAgregacaoReal;
   real_manual_acum?: number | null;
+  ativo?: boolean;
 }
 
 export function editarIndicador(id: string, body: EditarIndicadorBody): Promise<Indicador> {

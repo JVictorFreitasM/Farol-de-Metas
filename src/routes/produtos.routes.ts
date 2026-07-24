@@ -97,23 +97,25 @@ produtosRouter.post("/", authorize("gerente"), async (req, res, next) => {
     const existente = await prisma.produto.findFirst({ where: { nome: body.nome, setorId } });
     if (existente) throw conflict("Já existe um produto com esse nome neste setor");
 
-    const produto = await prisma.produto.create({
-      data: {
-        nome: body.nome,
-        descricao: body.descricao,
-        setorId,
-        status: body.status,
-        criadoPor: usuario.id,
-      },
-      include: { _count: { select: { indicadores: true } } },
-    });
+    const produto = await prisma.$transaction(async (tx) => {
+      const produto = await tx.produto.create({
+        data: {
+          nome: body.nome,
+          descricao: body.descricao,
+          setorId,
+          status: body.status,
+          criadoPor: usuario.id,
+        },
+        include: { _count: { select: { indicadores: true } } },
+      });
 
-    await registrarAuditoria(req, {
-      acao: "CREATE",
-      tabela: "produtos",
-      registroId: produto.id,
-      setorId: produto.setorId,
-      detalhes: { nome: produto.nome },
+      await registrarAuditoria(
+        req,
+        { acao: "CREATE", tabela: "produtos", registroId: produto.id, setorId: produto.setorId, detalhes: { nome: produto.nome } },
+        tx
+      );
+
+      return produto;
     });
 
     res.status(201).json(serializeProduto(produto));
@@ -143,24 +145,26 @@ produtosRouter.put("/:id", authorize("gerente", "admin"), async (req, res, next)
       if (duplicado) throw badRequest("Já existe um produto com esse nome neste setor");
     }
 
-    const produto = await prisma.produto.update({
-      where: { id: produtoAtual.id },
-      data: {
-        nome: body.nome,
-        descricao: body.descricao,
-        status: body.status,
-        atualizadoPor: usuario.id,
-        atualizadoEm: new Date(),
-      },
-      include: { _count: { select: { indicadores: true } } },
-    });
+    const produto = await prisma.$transaction(async (tx) => {
+      const produto = await tx.produto.update({
+        where: { id: produtoAtual.id },
+        data: {
+          nome: body.nome,
+          descricao: body.descricao,
+          status: body.status,
+          atualizadoPor: usuario.id,
+          atualizadoEm: new Date(),
+        },
+        include: { _count: { select: { indicadores: true } } },
+      });
 
-    await registrarAuditoria(req, {
-      acao: "UPDATE",
-      tabela: "produtos",
-      registroId: produto.id,
-      setorId: produto.setorId,
-      detalhes: { campos_alterados: body },
+      await registrarAuditoria(
+        req,
+        { acao: "UPDATE", tabela: "produtos", registroId: produto.id, setorId: produto.setorId, detalhes: { campos_alterados: body } },
+        tx
+      );
+
+      return produto;
     });
 
     res.json(serializeProduto(produto));
@@ -174,14 +178,14 @@ produtosRouter.delete("/:id", authorize("gerente", "admin"), async (req, res, ne
     const produto = await prisma.produto.findUnique({ where: { id: req.params.id } });
     if (!produto) throw notFound("Produto não encontrado");
 
-    await prisma.produto.delete({ where: { id: produto.id } });
+    await prisma.$transaction(async (tx) => {
+      await tx.produto.delete({ where: { id: produto.id } });
 
-    await registrarAuditoria(req, {
-      acao: "DELETE",
-      tabela: "produtos",
-      registroId: produto.id,
-      setorId: produto.setorId,
-      detalhes: { nome: produto.nome },
+      await registrarAuditoria(
+        req,
+        { acao: "DELETE", tabela: "produtos", registroId: produto.id, setorId: produto.setorId, detalhes: { nome: produto.nome } },
+        tx
+      );
     });
 
     res.status(204).end();

@@ -90,29 +90,32 @@ indicadoresRouter.post("/", authorize("gerente", "admin"), async (req, res, next
     const existente = await prisma.indicador.findFirst({ where: { nome: body.nome, setorId } });
     if (existente) throw conflict("Já existe um indicador com esse nome neste setor");
 
-    const indicador = await prisma.indicador.create({
-      data: {
-        setorId,
-        nome: body.nome,
-        icIv: body.ic_iv,
-        unidade: body.unidade,
-        paiId: body.pai_id,
-        produtoId: body.produto_id,
-        agregaIvs: body.agrega_ivs,
-        tipoAcumuladoMeta: body.tipo_acumulado_meta,
-        tipoAcumuladoReal: body.tipo_acumulado_real,
-        tipoAgregacaoMeta: body.tipo_agregacao_meta,
-        tipoAgregacaoReal: body.tipo_agregacao_real,
-        realManualAcum: body.real_manual_acum,
-      },
-      include: { produto: true },
-    });
+    const indicador = await prisma.$transaction(async (tx) => {
+      const indicador = await tx.indicador.create({
+        data: {
+          setorId,
+          nome: body.nome,
+          icIv: body.ic_iv,
+          unidade: body.unidade,
+          paiId: body.pai_id,
+          produtoId: body.produto_id,
+          agregaIvs: body.agrega_ivs,
+          tipoAcumuladoMeta: body.tipo_acumulado_meta,
+          tipoAcumuladoReal: body.tipo_acumulado_real,
+          tipoAgregacaoMeta: body.tipo_agregacao_meta,
+          tipoAgregacaoReal: body.tipo_agregacao_real,
+          realManualAcum: body.real_manual_acum,
+        },
+        include: { produto: true },
+      });
 
-    await registrarAuditoria(req, {
-      acao: "CREATE",
-      tabela: "indicadores",
-      registroId: indicador.id,
-      setorId: indicador.setorId,
+      await registrarAuditoria(
+        req,
+        { acao: "CREATE", tabela: "indicadores", registroId: indicador.id, setorId: indicador.setorId },
+        tx
+      );
+
+      return indicador;
     });
 
     res.status(201).json(serializeIndicador(indicador));
@@ -131,6 +134,9 @@ const editarIndicadorSchema = z.object({
   tipo_agregacao_meta: z.enum(["soma", "media", "meta_manual"]).optional(),
   tipo_agregacao_real: z.enum(["soma", "media", "proporcao_agregada", "real_manual"]).optional(),
   real_manual_acum: z.number().nullable().optional(),
+  // Reativação/inativação do indicador (independente de ano) — reaproveita este endpoint em vez
+  // de uma rota dedicada, já que é só mais um campo do mesmo update.
+  ativo: z.boolean().optional(),
 });
 
 indicadoresRouter.patch("/:id", authorize("gerente", "admin"), async (req, res, next) => {
@@ -146,29 +152,38 @@ indicadoresRouter.patch("/:id", authorize("gerente", "admin"), async (req, res, 
       if (duplicado) throw badRequest("Já existe um indicador com esse nome neste setor");
     }
 
-    const indicador = await prisma.indicador.update({
-      where: { id: indicadorAtual.id },
-      data: {
-        nome: body.nome,
-        unidade: body.unidade,
-        produtoId: body.produto_id,
-        agregaIvs: body.agrega_ivs,
-        tipoAcumuladoMeta: body.tipo_acumulado_meta,
-        tipoAcumuladoReal: body.tipo_acumulado_real,
-        tipoAgregacaoMeta: body.tipo_agregacao_meta,
-        tipoAgregacaoReal: body.tipo_agregacao_real,
-        realManualAcum: body.real_manual_acum,
-        atualizadoEm: new Date(),
-      },
-      include: { produto: true },
-    });
+    const indicador = await prisma.$transaction(async (tx) => {
+      const indicador = await tx.indicador.update({
+        where: { id: indicadorAtual.id },
+        data: {
+          nome: body.nome,
+          unidade: body.unidade,
+          produtoId: body.produto_id,
+          agregaIvs: body.agrega_ivs,
+          tipoAcumuladoMeta: body.tipo_acumulado_meta,
+          tipoAcumuladoReal: body.tipo_acumulado_real,
+          tipoAgregacaoMeta: body.tipo_agregacao_meta,
+          tipoAgregacaoReal: body.tipo_agregacao_real,
+          realManualAcum: body.real_manual_acum,
+          ativo: body.ativo,
+          atualizadoEm: new Date(),
+        },
+        include: { produto: true },
+      });
 
-    await registrarAuditoria(req, {
-      acao: "UPDATE",
-      tabela: "indicadores",
-      registroId: indicador.id,
-      setorId: indicador.setorId,
-      detalhes: { campos_alterados: body },
+      await registrarAuditoria(
+        req,
+        {
+          acao: "UPDATE",
+          tabela: "indicadores",
+          registroId: indicador.id,
+          setorId: indicador.setorId,
+          detalhes: { campos_alterados: body },
+        },
+        tx
+      );
+
+      return indicador;
     });
 
     res.json(serializeIndicador(indicador));
@@ -183,16 +198,17 @@ indicadoresRouter.delete("/:id", authorize("gerente", "admin"), async (req, res,
     if (!indicador) throw notFound("Indicador não encontrado");
     if (!indicador.ativo) throw conflict("Este indicador já está inativo");
 
-    await prisma.indicador.update({ where: { id: indicador.id }, data: { ativo: false } });
-    if (indicador.icIv === "IC") {
-      await prisma.indicador.updateMany({ where: { paiId: indicador.id, ativo: true }, data: { ativo: false } });
-    }
+    await prisma.$transaction(async (tx) => {
+      await tx.indicador.update({ where: { id: indicador.id }, data: { ativo: false } });
+      if (indicador.icIv === "IC") {
+        await tx.indicador.updateMany({ where: { paiId: indicador.id, ativo: true }, data: { ativo: false } });
+      }
 
-    await registrarAuditoria(req, {
-      acao: "DELETE",
-      tabela: "indicadores",
-      registroId: indicador.id,
-      setorId: indicador.setorId,
+      await registrarAuditoria(
+        req,
+        { acao: "DELETE", tabela: "indicadores", registroId: indicador.id, setorId: indicador.setorId },
+        tx
+      );
     });
 
     res.status(204).end();

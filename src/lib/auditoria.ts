@@ -1,6 +1,8 @@
 import { Request } from "express";
-import { AcaoAuditoria } from "@prisma/client";
+import { AcaoAuditoria, Prisma } from "@prisma/client";
 import { prisma } from "./prisma";
+
+type PrismaClientOuTx = Pick<Prisma.TransactionClient, "auditoria">;
 
 export async function registrarAuditoria(
   req: Request,
@@ -10,9 +12,10 @@ export async function registrarAuditoria(
     registroId?: string;
     setorId?: string | null;
     detalhes?: Record<string, unknown>;
-  }
+  },
+  db: PrismaClientOuTx = prisma
 ) {
-  await prisma.auditoria.create({
+  await db.auditoria.create({
     data: {
       setorId: params.setorId ?? req.usuario?.setorId ?? null,
       usuarioId: req.usuario?.id ?? null,

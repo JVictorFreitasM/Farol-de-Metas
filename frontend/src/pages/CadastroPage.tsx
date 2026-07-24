@@ -7,6 +7,7 @@ import { CriarMetaModal } from "../components/CriarMetaModal";
 import { useAuth } from "../hooks/useAuth";
 import { useProdutos } from "../hooks/useProdutos";
 import { useMetas } from "../hooks/useMetas";
+import { useIndicadores } from "../hooks/useIndicadores";
 import { useAnoSelecionado } from "../hooks/useAnoSelecionado";
 import { useSetorSelecionado } from "../hooks/useSetorSelecionado";
 import { listarSetores } from "../services/metasService";
@@ -41,14 +42,23 @@ export function CadastroPage() {
     pagina,
   });
 
+  // Metas do ano corrente: só usadas aqui para (1) criar a meta ao cadastrar um indicador novo e
+  // (2) mostrar o "Responsável" na tabela quando existir meta nesse ano. A listagem/gestão da
+  // aba (quais indicadores aparecem, inativar/ativar) usa useIndicadores — independente de ano —
+  // já que indicador sem meta no ano corrente é válido e precisa continuar editável.
   const {
     metas,
-    loading: loadingMetas,
-    criar: criarIndicador,
-    deletar: deletarIndicador,
-    inativar: inativarIndicador,
-    ativar: ativarIndicador,
+    criar: criarMetaDoIndicador,
+    inativar: inativarMeta,
+    ativar: ativarMeta,
   } = useMetas({ setor_id: setorId, ano, incluir_inativos: true });
+  const metasPorIndicadorId = new Map(metas.map((m) => [m.indicador_id, m]));
+
+  const {
+    indicadores,
+    loading: loadingIndicadores,
+    recarregar: recarregarIndicadores,
+  } = useIndicadores({ setor_id: setorId, incluir_inativos: true });
 
   const filtros = (
     <div className="filtros">
@@ -155,15 +165,16 @@ export function CadastroPage() {
             )}
           </div>
 
-          {loadingMetas && <p>Carregando...</p>}
-          {!loadingMetas && !setorId && <p>Selecione um setor para visualizar os indicadores.</p>}
-          {!loadingMetas && setorId && (
+          {loadingIndicadores && <p>Carregando...</p>}
+          {!loadingIndicadores && !setorId && <p>Selecione um setor para visualizar os indicadores.</p>}
+          {!loadingIndicadores && setorId && (
             <IndicadoresTable
-              metas={metas}
+              indicadores={indicadores}
+              ano={ano}
+              metasPorIndicadorId={metasPorIndicadorId}
               podeGerenciar={podeGerenciar}
-              onDeletar={deletarIndicador}
-              onInativar={inativarIndicador}
-              onAtivar={ativarIndicador}
+              onInativar={inativarMeta}
+              onAtivar={ativarMeta}
             />
           )}
 
@@ -171,9 +182,10 @@ export function CadastroPage() {
             <CriarMetaModal
               setores={setores}
               setorIdInicial={setorId}
-              ano={ano}
+              anoInicial={ano}
               onSalvar={async (body) => {
-                await criarIndicador(body);
+                await criarMetaDoIndicador(body);
+                await recarregarIndicadores();
                 setModalIndicadorAberto(false);
               }}
               onFechar={() => setModalIndicadorAberto(false)}

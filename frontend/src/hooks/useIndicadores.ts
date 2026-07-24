@@ -55,5 +55,11 @@ export function useIndicadores(params: ListarIndicadoresParams) {
     await carregar();
   };
 
-  return { indicadores, loading, recarregar: carregar, criar, editar, deletar };
+  const ativar = async (id: string) => {
+    await editarIndicador(id, { ativo: true });
+    toast.success("Indicador ativado!");
+    await carregar();
+  };
+
+  return { indicadores, loading, recarregar: carregar, criar, editar, deletar, ativar };
 }

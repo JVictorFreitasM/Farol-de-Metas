@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { toast } from "react-toastify";
 import { CriarMetaBody } from "../services/metasService";
-import { criarIndicador } from "../services/indicadoresService";
+import { criarIndicador, deletarIndicador } from "../services/indicadoresService";
 import { useProdutos } from "../hooks/useProdutos";
 import { useIndicadores } from "../hooks/useIndicadores";
+import { gerarOpcoesAno } from "../hooks/useAnoSelecionado";
 import { IcIv, Setor, TipoAgregacaoMeta, TipoAgregacaoReal, TipoMeta } from "../types";
 
 const UNIDADES = ["%", "R$", "UN", "Tons", "nº", "D", "DD", "H", "Q", "CDI"];
@@ -11,17 +12,18 @@ const UNIDADES = ["%", "R$", "UN", "Tons", "nº", "D", "DD", "H", "Q", "CDI"];
 export function CriarMetaModal({
   setores,
   setorIdInicial,
-  ano,
+  anoInicial,
   onSalvar,
   onFechar,
 }: {
   setores: Setor[];
   setorIdInicial?: string;
-  ano: number;
+  anoInicial: number;
   onSalvar: (body: CriarMetaBody) => Promise<void>;
   onFechar: () => void;
 }) {
   const [setorId, setSetorId] = useState(setorIdInicial ?? "");
+  const [ano, setAno] = useState(anoInicial);
   const [icIv, setIcIv] = useState<IcIv>("IC");
   const [paiId, setPaiId] = useState("");
   const [indicador, setIndicador] = useState("");
@@ -68,15 +70,28 @@ export function CriarMetaModal({
         tipo_agregacao_real: icIv === "IC" && agregaIvs ? tipoAgregacaoReal : undefined,
       });
 
-      await onSalvar({
-        indicador_id: novoIndicador.id,
-        ano,
-        responsavel: responsavel.trim(),
-        tipo_meta: tipoMeta,
-        meta_manual_acum:
-          icIv === "IC" && agregaIvs && tipoAgregacaoMeta === "meta_manual" ? Number(metaManualAcum) : undefined,
-        meta_ano: metaAno ? Number(metaAno) : undefined,
-      });
+      try {
+        await onSalvar({
+          indicador_id: novoIndicador.id,
+          ano,
+          responsavel: responsavel.trim(),
+          tipo_meta: tipoMeta,
+          meta_manual_acum:
+            icIv === "IC" && agregaIvs && tipoAgregacaoMeta === "meta_manual" ? Number(metaManualAcum) : undefined,
+          meta_ano: metaAno ? Number(metaAno) : undefined,
+        });
+      } catch (err) {
+        // O indicador já foi criado, mas a meta falhou — sem isso, ele fica órfão (sem meta em
+        // nenhum ano) e invisível na tela, já que a listagem é alimentada pelas Metas, não pelos
+        // Indicadores diretamente. Desfaz o indicador para não deixar esse fantasma no banco.
+        await deletarIndicador(novoIndicador.id).catch(() => {});
+        toast.error(
+          err instanceof Error
+            ? `Indicador não foi salvo: ${err.message}`
+            : "Indicador não foi salvo: erro ao criar a meta"
+        );
+        return;
+      }
     } finally {
       setSalvando(false);
     }
@@ -94,6 +109,15 @@ export function CriarMetaModal({
               <option value="">Selecione...</option>
               {setores.map((s) => (
                 <option key={s.id} value={s.id}>{s.nome}</option>
+              ))}
+            </select>
+          </label>
+
+          <label className="form-group">
+            Ano
+            <select className="form-input" value={ano} onChange={(e) => setAno(Number(e.target.value))}>
+              {gerarOpcoesAno().map((a) => (
+                <option key={a} value={a}>{a}</option>
               ))}
             </select>
           </label>

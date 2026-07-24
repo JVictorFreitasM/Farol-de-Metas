@@ -1,60 +1,67 @@
-import { Fragment, useState } from "react";
-import { Meta } from "../types";
+import { Fragment } from "react";
+import { Indicador, Meta } from "../types";
 
 interface ItemIc {
-  ic: Meta;
-  ivs: Meta[];
+  ic: Indicador;
+  ivs: Indicador[];
 }
 
-function agruparPorIc(metas: Meta[]): ItemIc[] {
-  const ics = metas.filter((m) => m.ic_iv === "IC").sort((a, b) => a.ordem - b.ordem);
-  const ivsPorPai = new Map<string, Meta[]>();
-  for (const m of metas) {
-    if (m.pai_id) {
-      const lista = ivsPorPai.get(m.pai_id) ?? [];
-      lista.push(m);
-      ivsPorPai.set(m.pai_id, lista);
+function agruparPorIc(indicadores: Indicador[]): ItemIc[] {
+  const ics = indicadores.filter((i) => i.ic_iv === "IC").sort((a, b) => a.nome.localeCompare(b.nome));
+  const ivsPorPai = new Map<string, Indicador[]>();
+  for (const i of indicadores) {
+    if (i.pai_id) {
+      const lista = ivsPorPai.get(i.pai_id) ?? [];
+      lista.push(i);
+      ivsPorPai.set(i.pai_id, lista);
     }
   }
-  for (const lista of ivsPorPai.values()) lista.sort((a, b) => a.ordem - b.ordem);
+  for (const lista of ivsPorPai.values()) lista.sort((a, b) => a.nome.localeCompare(b.nome));
   return ics.map((ic) => ({ ic, ivs: ivsPorPai.get(ic.id) ?? [] }));
 }
 
 export function IndicadoresTable({
-  metas,
+  indicadores,
+  ano,
+  // Responsável, status e inativar/ativar são da Meta do ano selecionado — não do Indicador —
+  // porque inativar precisa valer só para aquele ano (ex: inativar em 2027 não pode bloquear o
+  // preenchimento de 2026, que pode ainda estar em aberto). Um indicador sem meta nesse ano
+  // continua listado (é o bug que isso corrige), só não tem ação disponível ainda.
+  metasPorIndicadorId,
   podeGerenciar,
-  onDeletar,
   onInativar,
   onAtivar,
 }: {
-  metas: Meta[];
+  indicadores: Indicador[];
+  ano: number;
+  metasPorIndicadorId: Map<string, Meta>;
   podeGerenciar: boolean;
-  onDeletar: (id: string) => Promise<void>;
-  onInativar: (id: string, motivo?: string) => Promise<void>;
-  onAtivar: (id: string) => Promise<void>;
+  onInativar: (metaId: string) => Promise<void>;
+  onAtivar: (metaId: string) => Promise<void>;
 }) {
-  const [confirmandoExclusao, setConfirmandoExclusao] = useState<string | null>(null);
-
-  if (metas.length === 0) {
+  if (indicadores.length === 0) {
     return <p>Nenhum indicador cadastrado para este setor.</p>;
   }
 
-  const grupos = agruparPorIc(metas);
+  const grupos = agruparPorIc(indicadores);
 
-  const renderLinha = (meta: Meta, indentado: boolean) => (
-    <tr key={meta.id} className={meta.ativo ? "" : "indicador-row-inativo"}>
-      <td>
-        <span className={`badge-ic-iv ${meta.ic_iv === "IC" ? "badge-ic" : "badge-iv"}`}>{meta.ic_iv}</span>
-      </td>
-      <td style={indentado ? { paddingLeft: 24 } : undefined}>{meta.indicador}</td>
-      <td>{meta.responsavel}</td>
-      <td>{meta.produto ?? "-"}</td>
-      <td>{meta.unidade}</td>
-      <td>{meta.ativo ? "Ativo" : "Inativo"}</td>
-      <td>
-        {podeGerenciar && (
-          <>
-            {meta.ativo ? (
+  const renderLinha = (indicador: Indicador, indentado: boolean) => {
+    const meta = metasPorIndicadorId.get(indicador.id);
+    return (
+      <tr key={indicador.id} className={meta && !meta.ativo ? "indicador-row-inativo" : ""}>
+        <td>
+          <span className={`badge-ic-iv ${indicador.ic_iv === "IC" ? "badge-ic" : "badge-iv"}`}>
+            {indicador.ic_iv}
+          </span>
+        </td>
+        <td style={indentado ? { paddingLeft: 24 } : undefined}>{indicador.nome}</td>
+        <td>{meta?.responsavel ?? "-"}</td>
+        <td>{indicador.produto ?? "-"}</td>
+        <td>{indicador.unidade}</td>
+        <td>{meta ? (meta.ativo ? "Ativo" : "Inativo") : `Sem meta em ${ano}`}</td>
+        <td>
+          {podeGerenciar && meta && (
+            meta.ativo ? (
               <button className="btn-link btn-link-warning" onClick={() => onInativar(meta.id)}>
                 Inativar
               </button>
@@ -62,32 +69,12 @@ export function IndicadoresTable({
               <button className="btn-link btn-link-success" onClick={() => onAtivar(meta.id)}>
                 Ativar
               </button>
-            )}
-            {confirmandoExclusao === meta.id ? (
-              <span className="acoes-confirmar">
-                <button
-                  className="btn-link btn-link-danger"
-                  onClick={async () => {
-                    await onDeletar(meta.id);
-                    setConfirmandoExclusao(null);
-                  }}
-                >
-                  Confirmar
-                </button>
-                <button className="btn-link" onClick={() => setConfirmandoExclusao(null)}>
-                  Cancelar
-                </button>
-              </span>
-            ) : (
-              <button className="btn-link btn-link-danger" onClick={() => setConfirmandoExclusao(meta.id)}>
-                Remover
-              </button>
-            )}
-          </>
-        )}
-      </td>
-    </tr>
-  );
+            )
+          )}
+        </td>
+      </tr>
+    );
+  };
 
   return (
     <table className="ranking-table">
