@@ -1,6 +1,10 @@
 node_modules
 dist
-frontend
+frontend/node_modules
+frontend/node_modulesf
+frontend/dist
+frontend/distf
 .git
 .env
+.env.prod
 npm-debug.log
