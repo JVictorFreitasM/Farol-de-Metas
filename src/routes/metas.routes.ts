@@ -8,6 +8,7 @@ import { badRequest, conflict, forbidden, notFound } from "../lib/errors";
 import { registrarAuditoria } from "../lib/auditoria";
 import { garantirMesesAbertos } from "../lib/fechamento";
 import { MetaComRelacoes, serializeMeta } from "../lib/serializers";
+import { resolverAcumuloEspecifico } from "../lib/acumuloEspecifico";
 import {
   calcularAcumuladoLinha,
   calcularAcumuladoPeriodo,
@@ -310,6 +311,18 @@ metasRouter.get("/:id/acumulado-periodo", async (req, res, next) => {
 
 const mesEnum = z.enum(MESES.map((mes) => mes.toLowerCase()) as [string, ...string[]]);
 
+// OS-018: campos de "Acúmulo específico" compartilhados entre criarMetaSchema e editarMetaSchema.
+// A validação/resolução em si (resolverAcumuloEspecifico) vive em lib/acumuloEspecifico.ts, fora
+// de routes.ts, pra poder ser testada sem depender de Express/Prisma (ver
+// tests/lib/acumuloEspecifico.validacao.test.ts).
+const acumuloEspecificoSchema = {
+  acumulo_especifico: z.boolean().optional(),
+  acum_meta_mes_inicio: mesEnum.optional(),
+  acum_meta_mes_fim: mesEnum.optional(),
+  acum_real_mes_inicio: mesEnum.optional(),
+  acum_real_mes_fim: mesEnum.optional(),
+};
+
 const comparativoQuerySchema = z.object({
   periodo_tipo: z.enum(["mes", "intervalo", "trimestre", "semestre", "ano"]),
   mes: mesEnum.optional(),
@@ -539,6 +552,7 @@ const criarMetaSchema = z.object({
   acum_real_manual: z.number().optional(),
   meta_ano: z.number().optional(),
   meta: mesesSchema.optional(),
+  ...acumuloEspecificoSchema,
 });
 
 metasRouter.post("/", authorize("gerente"), async (req, res, next) => {
@@ -565,6 +579,7 @@ metasRouter.post("/", authorize("gerente"), async (req, res, next) => {
     if (usaRealManual && body.acum_real_manual == null) {
       throw badRequest("Este indicador usa acumulado manual do Real e requer o campo acum_real_manual");
     }
+    const dadosAcumuloEspecifico = resolverAcumuloEspecifico(body, indicador);
 
     const meta = await prisma.$transaction(async (tx) => {
       const meta = await tx.meta.create({
@@ -578,6 +593,7 @@ metasRouter.post("/", authorize("gerente"), async (req, res, next) => {
           metaManualAcum: body.meta_manual_acum,
           acumMetaManual: body.acum_meta_manual,
           acumRealManual: body.acum_real_manual,
+          ...dadosAcumuloEspecifico,
           metaAno: body.meta_ano,
           metaJan: body.meta?.jan,
           metaFev: body.meta?.fev,
@@ -621,6 +637,7 @@ const editarMetaSchema = z.object({
   // agrega os IVs" abaixo, que só se aplica a meta_ano/meta.
   acum_meta_manual: z.number().optional(),
   acum_real_manual: z.number().optional(),
+  ...acumuloEspecificoSchema,
 });
 
 metasRouter.put("/:id/meta", authorize("gerente", "admin"), async (req, res, next) => {
@@ -664,6 +681,8 @@ metasRouter.put("/:id/meta", authorize("gerente", "admin"), async (req, res, nex
       }
     }
 
+    const dadosAcumuloEspecifico = resolverAcumuloEspecifico(body, metaAtual.indicador);
+
     const valoresAntes = { ...metaAtual };
 
     const metaAtualizada = await prisma.$transaction(async (tx) => {
@@ -685,6 +704,7 @@ metasRouter.put("/:id/meta", authorize("gerente", "admin"), async (req, res, nex
           metaDez: body.meta?.dez,
           acumMetaManual: body.acum_meta_manual,
           acumRealManual: body.acum_real_manual,
+          ...dadosAcumuloEspecifico,
           atualizadoPor: usuario.id,
         },
       });

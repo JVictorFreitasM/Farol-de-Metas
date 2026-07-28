@@ -5,7 +5,7 @@ import { prisma } from "../lib/prisma";
 import { authenticate, authorize, resolveSetorId } from "../middleware/auth";
 import { badRequest, forbidden } from "../lib/errors";
 import { MESES } from "../lib/metasCalc";
-import { gerarWorkbookExcel } from "../lib/excelExport";
+import { gerarWorkbookExcel, formatarDataHoraArquivo } from "../lib/excelExport";
 
 export const relatoriosRouter = Router();
 relatoriosRouter.use(authenticate);
@@ -259,10 +259,14 @@ relatoriosRouter.get("/exportar-excel", async (req, res, next) => {
       })
     );
 
-    const buffer = await gerarWorkbookExcel(setoresComMetas, query.ano);
+    const geradoEm = new Date();
+    const buffer = await gerarWorkbookExcel(setoresComMetas, query.ano, geradoEm);
 
+    const carimbo = formatarDataHoraArquivo(geradoEm);
     const nomeArquivo =
-      setores.length === 1 ? `farol_${slugify(setores[0].nome)}_${query.ano}.xlsx` : `farol_${query.ano}.xlsx`;
+      setores.length === 1
+        ? `farol_${slugify(setores[0].nome)}_${query.ano}_${carimbo}.xlsx`
+        : `farol_${query.ano}_${carimbo}.xlsx`;
 
     res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
     res.setHeader("Content-Disposition", `attachment; filename="${nomeArquivo}"`);

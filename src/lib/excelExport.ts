@@ -32,6 +32,36 @@ function paraNumero(valor: Decimal | null): number | null {
   return valor == null ? null : valor.toNumber();
 }
 
+/** Extrai os componentes de data/hora de `data` já convertidos para o fuso de Brasília,
+ * independente do fuso configurado no servidor (ex: UTC em produção). */
+function componentesBrasilia(data: Date) {
+  const partes = new Intl.DateTimeFormat("pt-BR", {
+    timeZone: "America/Sao_Paulo",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(data);
+  const valor = (tipo: string) => partes.find((p) => p.type === tipo)!.value;
+  // hour12: false pode devolver "24" à meia-noite em vez de "00"; normaliza.
+  const hora = valor("hour") === "24" ? "00" : valor("hour");
+  return { dia: valor("day"), mes: valor("month"), ano: valor("year"), hora, minuto: valor("minute") };
+}
+
+/** Formata a data/hora de geração do relatório no padrão pedido: "HH:MM - DD/MM/AAAA" (fuso de Brasília). */
+export function formatarDataHoraGeracao(data: Date): string {
+  const { dia, mes, ano, hora, minuto } = componentesBrasilia(data);
+  return `${hora}:${minuto} - ${dia}/${mes}/${ano}`;
+}
+
+/** Mesma data/hora (fuso de Brasília), mas em formato seguro para nome de arquivo (sem ":" nem "/"). */
+export function formatarDataHoraArquivo(data: Date): string {
+  const { dia, mes, ano, hora, minuto } = componentesBrasilia(data);
+  return `${dia}-${mes}-${ano}_${hora}-${minuto}`;
+}
+
 const MESES_LABEL: Record<MesKey, string> = {
   Jan: "JAN", Fev: "FEV", Mar: "MAR", Abr: "ABR", Mai: "MAI", Jun: "JUN",
   Jul: "JUL", Ago: "AGO", Set: "SET", Out: "OUT", Nov: "NOV", Dez: "DEZ",
@@ -76,7 +106,13 @@ function larguraColunaLogica(colLogico: number): number {
  * Uma linha em branco separa o cabeçalho dos dados e cada grupo de produto do próximo, e uma
  * coluna em branco separa cada coluna de conteúdo da seguinte — só pra facilitar a leitura
  * visual, sem carregar dado nenhum. */
-export function montarAbaSetor(workbook: ExcelJS.Workbook, setor: Setor, ano: number, metas: MetaComRelacoes[]) {
+export function montarAbaSetor(
+  workbook: ExcelJS.Workbook,
+  setor: Setor,
+  ano: number,
+  metas: MetaComRelacoes[],
+  geradoEm: Date
+) {
   const nomeAba = setor.nome.replace(/[:\\/?*[\]]/g, " ").slice(0, 31) || "Setor";
   const ws = workbook.addWorksheet(nomeAba, { views: [{ state: "frozen", ySplit: 4 }] });
 
@@ -86,6 +122,14 @@ export function montarAbaSetor(workbook: ExcelJS.Workbook, setor: Setor, ano: nu
   tituloCell.font = { bold: true, size: 16, color: { argb: COR_TITULO } };
   tituloCell.alignment = { horizontal: "center", vertical: "middle" };
   ws.getRow(1).height = 26;
+
+  // Linha 2 (antes em branco, só de espaçamento entre título e cabeçalho) passa a mostrar
+  // quando o relatório foi gerado, no formato pedido: "HH:MM - DD/MM/AAAA".
+  ws.mergeCells(2, 1, 2, TOTAL_FISICO);
+  const geradoEmCell = ws.getCell(2, 1);
+  geradoEmCell.value = `Gerado em: ${formatarDataHoraGeracao(geradoEm)}`;
+  geradoEmCell.font = { italic: true, size: 9, color: { argb: "FF666666" } };
+  geradoEmCell.alignment = { horizontal: "center", vertical: "middle" };
 
   // Fundo azul-marinho contínuo nas linhas 3-4 (inclusive nas colunas-espaçadoras, pra não
   // deixar frestas brancas cortando a faixa do cabeçalho).
@@ -226,14 +270,15 @@ export function montarAbaSetor(workbook: ExcelJS.Workbook, setor: Setor, ano: nu
 /** Gera o workbook completo (uma aba por setor) e retorna o buffer .xlsx pronto para download. */
 export async function gerarWorkbookExcel(
   setoresComMetas: { setor: Setor; metas: MetaComRelacoes[] }[],
-  ano: number
+  ano: number,
+  geradoEm: Date = new Date()
 ): Promise<ExcelJS.Buffer> {
   const workbook = new ExcelJS.Workbook();
   workbook.creator = "Farol";
-  workbook.created = new Date();
+  workbook.created = geradoEm;
 
   for (const { setor, metas } of setoresComMetas) {
-    montarAbaSetor(workbook, setor, ano, metas);
+    montarAbaSetor(workbook, setor, ano, metas, geradoEm);
   }
 
   return workbook.xlsx.writeBuffer();

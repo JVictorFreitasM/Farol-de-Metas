@@ -11,7 +11,9 @@
     "prisma:deploy": "prisma migrate deploy",
     "prisma:seed": "ts-node prisma/seed.ts",
     "prisma:studio": "prisma studio",
-    "test:export": "ts-node tests/export-regression.ts"
+    "test": "vitest run",
+    "test:export": "ts-node tests/export-regression.ts",
+    "fixture:extrair": "ts-node tests/scripts/extrair-fixture-excel.ts"
   },
   "prisma": {
     "seed": "ts-node prisma/seed.ts"
@@ -37,6 +39,7 @@
     "prisma": "^6.1.0",
     "ts-node": "^10.9.2",
     "ts-node-dev": "^2.0.0",
-    "typescript": "^5.6.3"
+    "typescript": "^5.6.3",
+    "vitest": "^4.1.10"
   }
 }

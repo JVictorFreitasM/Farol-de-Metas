@@ -1,6 +1,6 @@
 import { ReactNode, useLayoutEffect, useRef, useState } from "react";
 import { toast } from "react-toastify";
-import { obterAcumuladoPeriodo } from "../services/metasService";
+import { AcumuloEspecificoBody, obterAcumuladoPeriodo } from "../services/metasService";
 import { formatValor } from "../lib/format";
 import { Meta, MESES, MESES_LABEL, Mes } from "../types";
 
@@ -44,11 +44,13 @@ export function AcumuladoTooltip({
   children,
   podeEditarMetaManual,
   onSalvarMetaManual,
+  onSalvarAcumuloEspecifico,
 }: {
   meta: Meta;
   children: ReactNode;
   podeEditarMetaManual?: boolean;
   onSalvarMetaManual?: (id: string, valor: number) => Promise<void>;
+  onSalvarAcumuloEspecifico?: (id: string, body: AcumuloEspecificoBody) => Promise<void>;
 }) {
   const [visivel, setVisivel] = useState(false);
   const [posicao, setPosicao] = useState({ top: 0, left: 0, direcao: "cima" as "cima" | "baixo" });
@@ -60,7 +62,66 @@ export function AcumuladoTooltip({
   const [editandoMetaManual, setEditandoMetaManual] = useState(false);
   const [valorMetaManual, setValorMetaManual] = useState("");
 
+  // OS-018: "Acúmulo específico" — configuração persistida (por linha), diferente do
+  // "Acumulado por período" acima, que é só uma consulta ad-hoc (não grava nada).
+  const [acumuloAberto, setAcumuloAberto] = useState(false);
+  const [acumuloAtivo, setAcumuloAtivo] = useState(meta.acumulo_especifico);
+  const [acumMetaInicio, setAcumMetaInicio] = useState<Mes>(meta.acum_meta_mes_inicio ?? "jan");
+  const [acumMetaFim, setAcumMetaFim] = useState<Mes>(meta.acum_meta_mes_fim ?? "dez");
+  const [acumRealInicio, setAcumRealInicio] = useState<Mes>(meta.acum_real_mes_inicio ?? "jan");
+  const [acumRealFim, setAcumRealFim] = useState<Mes>(meta.acum_real_mes_fim ?? "dez");
+  const [salvandoAcumulo, setSalvandoAcumulo] = useState(false);
+
   const ehMetaManual = meta.agrega_ivs && meta.tipo_agregacao_meta === "meta_manual";
+  // Mesmas incompatibilidades validadas no backend (ver resolverAcumuloEspecifico) — escondida
+  // em vez de mostrada-e-rejeitada, já que a linha "Tipo Acum." acima já deixa essa config visível.
+  const podeConfigurarAcumuloEspecifico =
+    podeEditarMetaManual && !meta.agrega_ivs && meta.tipo_acumulado_meta !== "manual" && meta.tipo_acumulado_real !== "manual";
+
+  const abrirAcumuloEspecifico = () => {
+    setAcumuloAtivo(meta.acumulo_especifico);
+    setAcumMetaInicio(meta.acum_meta_mes_inicio ?? "jan");
+    setAcumMetaFim(meta.acum_meta_mes_fim ?? "dez");
+    setAcumRealInicio(meta.acum_real_mes_inicio ?? "jan");
+    setAcumRealFim(meta.acum_real_mes_fim ?? "dez");
+    setAcumuloAberto(true);
+  };
+
+  const salvarAcumuloEspecifico = async () => {
+    if (!onSalvarAcumuloEspecifico) return;
+
+    if (acumuloAtivo) {
+      if (MESES.indexOf(acumMetaFim) < MESES.indexOf(acumMetaInicio)) {
+        toast.error("Meta: o mês final deve ser igual ou posterior ao mês inicial");
+        return;
+      }
+      if (MESES.indexOf(acumRealFim) < MESES.indexOf(acumRealInicio)) {
+        toast.error("Real: o mês final deve ser igual ou posterior ao mês inicial");
+        return;
+      }
+    }
+
+    setSalvandoAcumulo(true);
+    try {
+      await onSalvarAcumuloEspecifico(
+        meta.id,
+        acumuloAtivo
+          ? {
+              acumulo_especifico: true,
+              acum_meta_mes_inicio: acumMetaInicio,
+              acum_meta_mes_fim: acumMetaFim,
+              acum_real_mes_inicio: acumRealInicio,
+              acum_real_mes_fim: acumRealFim,
+            }
+          : { acumulo_especifico: false }
+      );
+      setAcumuloAberto(false);
+    } catch {
+      // erro já reportado via toast pelo hook chamador (useMetas.salvarAcumuloEspecifico)
+    } finally {
+      setSalvandoAcumulo(false);
+    }
+  };
 
   const iniciarEdicaoMetaManual = () => {
     if (!podeEditarMetaManual || !ehMetaManual) return;
@@ -282,6 +343,69 @@ export function AcumuladoTooltip({
                   </div>
                 )}
               </div>
+            )}
+
+            {podeConfigurarAcumuloEspecifico && (
+              <>
+                <div className="acumulado-tooltip-divider" />
+                {!acumuloAberto ? (
+                  <button className="btn-link acumulado-tooltip-periodo-toggle" onClick={abrirAcumuloEspecifico}>
+                    Acúmulo específico...
+                  </button>
+                ) : (
+                  <div className="acumulado-periodo">
+                    <label className="form-checkbox">
+                      <input
+                        type="checkbox"
+                        checked={acumuloAtivo}
+                        onChange={(e) => setAcumuloAtivo(e.target.checked)}
+                      />
+                      Acumular Meta e Real em intervalos específicos (em vez do ano inteiro)
+                    </label>
+
+                    {acumuloAtivo && (
+                      <>
+                        <div className="acumulado-tooltip-row">
+                          <span>Meta</span>
+                          <div className="acumulado-periodo-selects">
+                            <select value={acumMetaInicio} onChange={(e) => setAcumMetaInicio(e.target.value as Mes)}>
+                              {MESES.map((mes) => (
+                                <option key={mes} value={mes}>{MESES_LABEL[mes]}</option>
+                              ))}
+                            </select>
+                            <span>até</span>
+                            <select value={acumMetaFim} onChange={(e) => setAcumMetaFim(e.target.value as Mes)}>
+                              {MESES.map((mes) => (
+                                <option key={mes} value={mes}>{MESES_LABEL[mes]}</option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+                        <div className="acumulado-tooltip-row">
+                          <span>Real</span>
+                          <div className="acumulado-periodo-selects">
+                            <select value={acumRealInicio} onChange={(e) => setAcumRealInicio(e.target.value as Mes)}>
+                              {MESES.map((mes) => (
+                                <option key={mes} value={mes}>{MESES_LABEL[mes]}</option>
+                              ))}
+                            </select>
+                            <span>até</span>
+                            <select value={acumRealFim} onChange={(e) => setAcumRealFim(e.target.value as Mes)}>
+                              {MESES.map((mes) => (
+                                <option key={mes} value={mes}>{MESES_LABEL[mes]}</option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+                      </>
+                    )}
+
+                    <button className="btn-primary acumulado-periodo-aplicar" onClick={salvarAcumuloEspecifico} disabled={salvandoAcumulo}>
+                      {salvandoAcumulo ? "Salvando..." : "Salvar"}
+                    </button>
+                  </div>
+                )}
+              </>
             )}
           </div>
         </div>

@@ -217,6 +217,18 @@ model Meta {
   acumMetaManual Decimal? @map("acum_meta_manual") @db.Decimal(15, 4)
   acumRealManual Decimal? @map("acum_real_manual") @db.Decimal(15, 4)
 
+  // OS-018: acúmulo restrito a um intervalo de meses, configurado por linha de Meta (por
+  // indicador/setor/ano) — diferente de calcularAcumuladoPeriodo (OS existente), que resolve
+  // período sob demanda pra relatórios ad-hoc com o mesmo intervalo pra meta e real juntos.
+  // Aqui o intervalo é persistido e cada lado (Meta/Real) tem o seu, independente do outro.
+  // Meses guardados como string (MesKey: "Jan".."Dez", validado na aplicação) pra não introduzir
+  // uma segunda representação de mês além da já usada em MESES/campoMeta/campoReal.
+  acumuloEspecifico Boolean @default(false) @map("acumulo_especifico")
+  acumMetaMesInicio String? @map("acum_meta_mes_inicio") @db.VarChar(3)
+  acumMetaMesFim    String? @map("acum_meta_mes_fim") @db.VarChar(3)
+  acumRealMesInicio String? @map("acum_real_mes_inicio") @db.VarChar(3)
+  acumRealMesFim    String? @map("acum_real_mes_fim") @db.VarChar(3)
+
   // Meta anual (definida pelo gerente)
   metaAno Decimal? @map("meta_ano") @db.Decimal(15, 4)
 

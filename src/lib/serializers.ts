@@ -55,6 +55,14 @@ export function serializeMeta(
     // tipo_acumulado_real = "manual" (separados por lado).
     acum_meta_manual: meta.acumMetaManual,
     acum_real_manual: meta.acumRealManual,
+    // OS-018: acúmulo restrito a um intervalo de meses por linha, independente entre Meta e
+    // Real — meses guardados como "Jan".."Dez" no banco, expostos em minúsculo como o resto da
+    // API (ver mesEnum/acumulado-periodo em metas.routes.ts).
+    acumulo_especifico: meta.acumuloEspecifico,
+    acum_meta_mes_inicio: meta.acumMetaMesInicio?.toLowerCase() ?? null,
+    acum_meta_mes_fim: meta.acumMetaMesFim?.toLowerCase() ?? null,
+    acum_real_mes_inicio: meta.acumRealMesInicio?.toLowerCase() ?? null,
+    acum_real_mes_fim: meta.acumRealMesFim?.toLowerCase() ?? null,
     meta_ano: meta.metaAno,
     meses,
     acum_meta: meta.acumMeta,

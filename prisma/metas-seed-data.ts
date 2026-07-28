@@ -416,7 +416,12 @@ export const metasSeed: MetaSeed[] = [
     unidade: "nº",
     tipo_meta: null,
     agrega_ivs: false,
-    tipo_acumulado_meta: "soma",
+    // OS-018: acumulado de Meta é um teto anual reafirmado mês a mês (meta=1 em quase todo
+    // mês), não uma quantidade a somar — soma dos 12 meses dava 11, mas o acumulado correto é
+    // o teto (1), digitado manualmente. Achado durante a auditoria de regressão da OS-017
+    // (linha 23 da planilha, unidade "nº", acumulado inconclusivo: nem soma nem média batiam).
+    tipo_acumulado_meta: "manual",
+    acum_meta_manual: 1,
     tipo_acumulado_real: "soma",
     meta_ano: 1,
     pai_idx: null,

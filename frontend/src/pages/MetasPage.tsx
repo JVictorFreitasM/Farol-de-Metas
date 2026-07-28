@@ -31,7 +31,19 @@ export function MetasPage() {
   const [mostrarImportar, setMostrarImportar] = useState(false);
   const [anosDisponiveis, setAnosDisponiveis] = useState<number[]>([]);
 
-  const { metas, setores, loading, recarregar, salvarMeta, salvarReal, salvarMetaManual, deletar, inativar, ativar } = useMetas({
+  const {
+    metas,
+    setores,
+    loading,
+    recarregar,
+    salvarMeta,
+    salvarReal,
+    salvarMetaManual,
+    salvarAcumuloEspecifico,
+    deletar,
+    inativar,
+    ativar,
+  } = useMetas({
     ano,
     setor_id: setorId,
     incluir_inativos: mostrarInativos,
@@ -174,6 +186,7 @@ export function MetasPage() {
             onSalvarReal={salvarReal}
             onSalvarMeta={(id, body) => salvarMeta(id, { meta: body })}
             onSalvarMetaManual={salvarMetaManual}
+            onSalvarAcumuloEspecifico={salvarAcumuloEspecifico}
             onDeletar={deletar}
             onInativar={inativar}
             onAtivar={ativar}

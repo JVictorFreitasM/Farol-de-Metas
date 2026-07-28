@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "react-toastify";
 import {
+  AcumuloEspecificoBody,
   ativarMeta,
   criarMeta,
   CriarMetaBody,
@@ -68,6 +69,17 @@ export function useMetas(params: ListarMetasParams) {
     }
   };
 
+  const salvarAcumuloEspecifico = async (id: string, body: AcumuloEspecificoBody) => {
+    try {
+      await editarMeta(id, body);
+      toast.success("Acúmulo específico atualizado!");
+      await carregar();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro ao salvar acúmulo específico");
+      throw err;
+    }
+  };
+
   const salvarReal = async (id: string, body: MesesBody) => {
     try {
       await editarReal(id, { real: body });
@@ -123,5 +135,18 @@ export function useMetas(params: ListarMetasParams) {
     }
   };
 
-  return { metas, setores, loading, recarregar: carregar, salvarMeta, salvarMetaManual, salvarReal, criar, deletar, inativar, ativar };
+  return {
+    metas,
+    setores,
+    loading,
+    recarregar: carregar,
+    salvarMeta,
+    salvarMetaManual,
+    salvarAcumuloEspecifico,
+    salvarReal,
+    criar,
+    deletar,
+    inativar,
+    ativar,
+  };
 }

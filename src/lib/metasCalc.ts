@@ -20,11 +20,51 @@ function valoresPreenchidos(meta: Meta, campo: (mes: MesKey) => keyof Meta): Dec
   return MESES.map((mes) => meta[campo(mes)] as Decimal | null).filter((v): v is Decimal => v != null);
 }
 
-/** Recalcula acum_meta ou acum_real de uma linha a partir dos 12 meses, respeitando
- * tipo_acumulado_meta/tipo_acumulado_real (separados — OS-015). Quando o lado em questão é
- * "manual", os 12 meses continuam preenchidos normalmente (histórico), mas o acumulado final
- * vem de meta.acumMetaManual/meta.acumRealManual em vez de ser calculado a partir deles. */
+/** Resolve [mesInicio, mesFim] pra lista de meses, validando a ordem — usada tanto por um
+ * intervalo compartilhado (calcularAcumuladoPeriodo) quanto pelos intervalos independentes por
+ * lado do acúmulo específico (OS-018, ver calcularAcumuladoLinha). */
+function resolverMesesIntervalo(mesInicio: MesKey, mesFim: MesKey): MesKey[] {
+  const idxInicio = MESES.indexOf(mesInicio);
+  const idxFim = MESES.indexOf(mesFim);
+  if (idxInicio < 0 || idxFim < 0 || idxInicio > idxFim) {
+    throw new Error("Período inválido: mês inicial deve ser anterior ou igual ao mês final");
+  }
+  return MESES.slice(idxInicio, idxFim + 1);
+}
+
+/** Soma/média de um único lado (meta ou real) restrita a uma lista de meses, respeitando
+ * tipo_acumulado_meta/tipo_acumulado_real do indicador. "manual" não tem regra de rateio para
+ * um intervalo parcial — o valor manual vale para o ano cheio (ver calcularAcumuladoLinha) —
+ * então fica sem acumulado calculável nesse lado. Compartilhada por calcularAcumuladoPeriodo
+ * (intervalo único aplicado a meta e real juntos, usado em relatórios ad-hoc) e por
+ * calcularAcumuladoLinha quando meta.acumuloEspecifico=true (OS-018: intervalos independentes
+ * persistidos por linha) — evita duplicar a lógica de soma/média entre os dois caminhos. */
+function acumularLadoNoIntervalo(meta: MetaComIndicador, tipo: "meta" | "real", mesesPeriodo: MesKey[]): Decimal | null {
+  const tipoAcumulado = tipo === "meta" ? meta.indicador.tipoAcumuladoMeta : meta.indicador.tipoAcumuladoReal;
+  if (tipoAcumulado === "manual") return null;
+  const campo = tipo === "meta" ? campoMeta : campoReal;
+  const valores = mesesPeriodo.map((mes) => meta[campo(mes)] as Decimal | null).filter((v): v is Decimal => v != null);
+  return somaOuMedia(valores, tipoAcumulado as "soma" | "media");
+}
+
+/** Recalcula acum_meta ou acum_real de uma linha, respeitando tipo_acumulado_meta/
+ * tipo_acumulado_real (separados — OS-015) e, se configurado, o intervalo de acúmulo
+ * específico por lado (OS-018). Quando o lado em questão é "manual", os 12 meses continuam
+ * preenchidos normalmente (histórico), mas o acumulado final vem de meta.acumMetaManual/
+ * meta.acumRealManual em vez de ser calculado a partir deles. */
 export function calcularAcumuladoLinha(meta: MetaComIndicador, tipo: "meta" | "real"): Decimal | null {
+  // OS-018: acúmulo restrito a um intervalo de meses configurado por linha, independente entre
+  // Meta e Real — checado antes da regra padrão (que usa o ano inteiro). Validado na escrita
+  // (metas.routes.ts) pra nunca coexistir com tipo_acumulado="manual" no mesmo lado nem faltar
+  // algum dos 4 campos; se algo escapar dessa garantia, calculamos sem acumulado (null) em vez
+  // de arriscar um intervalo incompleto.
+  if (meta.acumuloEspecifico) {
+    const mesInicio = (tipo === "meta" ? meta.acumMetaMesInicio : meta.acumRealMesInicio) as MesKey | null;
+    const mesFim = (tipo === "meta" ? meta.acumMetaMesFim : meta.acumRealMesFim) as MesKey | null;
+    if (!mesInicio || !mesFim) return null;
+    return acumularLadoNoIntervalo(meta, tipo, resolverMesesIntervalo(mesInicio, mesFim));
+  }
+
   const tipoAcumulado = tipo === "meta" ? meta.indicador.tipoAcumuladoMeta : meta.indicador.tipoAcumuladoReal;
   if (tipoAcumulado === "manual") {
     return (tipo === "meta" ? meta.acumMetaManual : meta.acumRealManual) ?? null;
@@ -50,38 +90,10 @@ export function calcularAcumuladoPeriodo(
   status: "ok" | "nok" | null;
   detalhes: { mes: MesKey; meta: Decimal | null; real: Decimal | null }[];
 } {
-  const idxInicio = MESES.indexOf(mesInicio);
-  const idxFim = MESES.indexOf(mesFim);
-  if (idxInicio < 0 || idxFim < 0 || idxInicio > idxFim) {
-    throw new Error("Período inválido: mês inicial deve ser anterior ou igual ao mês final");
-  }
+  const mesesPeriodo = resolverMesesIntervalo(mesInicio, mesFim);
 
-  const mesesPeriodo = MESES.slice(idxInicio, idxFim + 1);
-  const valoresMeta = mesesPeriodo.map((mes) => meta[campoMeta(mes)] as Decimal | null).filter((v): v is Decimal => v != null);
-  const valoresReal = mesesPeriodo.map((mes) => meta[campoReal(mes)] as Decimal | null).filter((v): v is Decimal => v != null);
-
-  // tipo_acumulado_{meta,real}="manual": não há regra de rateio definida para acumular só uma
-  // parte do ano — o valor manual vale para o ano cheio (ver calcularAcumuladoLinha), então um
-  // período parcial fica sem acumulado calculável nesse lado.
-  const acumMeta =
-    meta.indicador.tipoAcumuladoMeta === "manual"
-      ? null
-      : valoresMeta.length > 0
-      ? (() => {
-          const soma = valoresMeta.reduce((acc, v) => acc.plus(v), new Decimal(0));
-          return meta.indicador.tipoAcumuladoMeta === "media" ? soma.div(valoresMeta.length) : soma;
-        })()
-      : null;
-
-  const acumReal =
-    meta.indicador.tipoAcumuladoReal === "manual"
-      ? null
-      : valoresReal.length > 0
-      ? (() => {
-          const soma = valoresReal.reduce((acc, v) => acc.plus(v), new Decimal(0));
-          return meta.indicador.tipoAcumuladoReal === "media" ? soma.div(valoresReal.length) : soma;
-        })()
-      : null;
+  const acumMeta = acumularLadoNoIntervalo(meta, "meta", mesesPeriodo);
+  const acumReal = acumularLadoNoIntervalo(meta, "real", mesesPeriodo);
 
   let percentual: Decimal | null = null;
   let status: "ok" | "nok" | null = null;

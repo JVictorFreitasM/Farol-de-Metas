@@ -52,7 +52,18 @@ export function criarMeta(body: CriarMetaBody) {
   return apiFetch(`/metas`, { method: "POST", body: JSON.stringify(body) });
 }
 
-export function editarMeta(id: string, body: { meta_ano?: number; meta?: MesesBody }) {
+// OS-018: acúmulo restrito a um intervalo de meses por linha, independente entre Meta e Real —
+// ver src/lib/acumuloEspecifico.ts no backend pra validação (mes_fim >= mes_inicio, incompatível
+// com tipo_acumulado="manual" no mesmo lado, e com indicadores que agregam IVs).
+export interface AcumuloEspecificoBody {
+  acumulo_especifico?: boolean;
+  acum_meta_mes_inicio?: Mes;
+  acum_meta_mes_fim?: Mes;
+  acum_real_mes_inicio?: Mes;
+  acum_real_mes_fim?: Mes;
+}
+
+export function editarMeta(id: string, body: { meta_ano?: number; meta?: MesesBody } & AcumuloEspecificoBody) {
   return apiFetch(`/metas/${id}/meta`, { method: "PUT", body: JSON.stringify(body) });
 }
 

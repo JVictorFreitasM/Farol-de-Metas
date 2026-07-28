@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { AcumuladoPeriodoResponse, MesesBody } from "../services/metasService";
+import { AcumuloEspecificoBody, AcumuladoPeriodoResponse, MesesBody } from "../services/metasService";
 import { AcumuladoTooltip } from "./AcumuladoTooltip";
 import { formatValor } from "../lib/format";
 import { Meta, MESES_LABEL, Mes, Role } from "../types";
@@ -74,6 +74,7 @@ export function MetasIndicadoresCards({
   onSalvarReal,
   onSalvarMeta,
   onSalvarMetaManual,
+  onSalvarAcumuloEspecifico,
   onDeletar,
   onInativar,
   onAtivar,
@@ -86,6 +87,7 @@ export function MetasIndicadoresCards({
   onSalvarReal: (id: string, body: MesesBody) => Promise<void>;
   onSalvarMeta: (id: string, body: MesesBody) => Promise<void>;
   onSalvarMetaManual: (id: string, valor: number) => Promise<void>;
+  onSalvarAcumuloEspecifico: (id: string, body: AcumuloEspecificoBody) => Promise<void>;
   onDeletar: (id: string) => Promise<void>;
   onInativar: (id: string, motivo?: string) => Promise<void>;
   onAtivar: (id: string) => Promise<void>;
@@ -203,7 +205,12 @@ export function MetasIndicadoresCards({
 
         <div className="indicador-row-nome">
           <div className="indicador-row-nome-texto">
-            <AcumuladoTooltip meta={meta} podeEditarMetaManual={isGerente} onSalvarMetaManual={onSalvarMetaManual}>
+            <AcumuladoTooltip
+              meta={meta}
+              podeEditarMetaManual={isGerente}
+              onSalvarMetaManual={onSalvarMetaManual}
+              onSalvarAcumuloEspecifico={onSalvarAcumuloEspecifico}
+            >
               {meta.indicador}
             </AcumuladoTooltip>
             {opcoes?.contador !== undefined && opcoes.contador > 0 && (

@@ -131,6 +131,13 @@ export interface Meta {
   meta_manual_acum: string | number | null;
   acum_meta_manual: string | number | null;
   acum_real_manual: string | number | null;
+  // OS-018: acúmulo restrito a um intervalo de meses por linha, independente entre Meta e Real
+  // (diferente do "Acumulado por período" ad-hoc, que não é persistido).
+  acumulo_especifico: boolean;
+  acum_meta_mes_inicio: Mes | null;
+  acum_meta_mes_fim: Mes | null;
+  acum_real_mes_inicio: Mes | null;
+  acum_real_mes_fim: Mes | null;
   meta_ano: string | number | null;
   meses: MesesMeta;
   acum_meta: string | number | null;
