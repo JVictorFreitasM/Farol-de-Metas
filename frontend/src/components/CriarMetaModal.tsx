@@ -39,9 +39,16 @@ export function CriarMetaModal({
   const [produtoId, setProdutoId] = useState("");
   const [salvando, setSalvando] = useState(false);
 
-  const { indicadores } = useIndicadores({ setor_id: setorId });
+  // incluir_inativos: true pra bater com a checagem do backend, que não distingue ativo/inativo
+  // ao rejeitar nome duplicado — um indicador inativo com o mesmo nome também bloqueia a criação.
+  const { indicadores } = useIndicadores({ setor_id: setorId, incluir_inativos: true });
   const icsDoSetor = indicadores.filter((i) => i.ic_iv === "IC" && i.ativo);
   const { produtos } = useProdutos({ setor_id: setorId, status: "ativo" });
+
+  // OS-019: aviso não-bloqueante de nome duplicado, mesma comparação (case-insensitive + trim)
+  // que o backend usa como fonte de verdade — só antecipa o feedback, não substitui a validação.
+  const nomeNormalizado = indicador.trim().toLowerCase();
+  const nomeDuplicado = nomeNormalizado.length > 0 && indicadores.some((i) => i.nome.trim().toLowerCase() === nomeNormalizado);
 
   const handleSalvar = async () => {
     if (!setorId) return toast.error("Selecione um setor");
@@ -56,19 +63,27 @@ export function CriarMetaModal({
     try {
       // OS-013: indicador (nome/hierarquia/unidade/agregação) e meta (valores do ano) são
       // entidades separadas agora — criamos o indicador primeiro e referenciamos seu id na meta.
-      const novoIndicador = await criarIndicador({
-        setor_id: setorId,
-        nome: indicador.trim(),
-        ic_iv: icIv,
-        unidade,
-        pai_id: icIv === "IV" ? paiId : undefined,
-        produto_id: icIv === "IC" && produtoId ? produtoId : undefined,
-        agrega_ivs: icIv === "IC" ? agregaIvs : undefined,
-        tipo_acumulado_meta: tipoAcumulado,
-        tipo_acumulado_real: tipoAcumulado,
-        tipo_agregacao_meta: icIv === "IC" && agregaIvs ? tipoAgregacaoMeta : undefined,
-        tipo_agregacao_real: icIv === "IC" && agregaIvs ? tipoAgregacaoReal : undefined,
-      });
+      // OS-019: catch próprio aqui — sem ele, um erro na criação do indicador (ex: nome
+      // duplicado) subia sem toast nenhum, só um unhandled rejection no console.
+      let novoIndicador;
+      try {
+        novoIndicador = await criarIndicador({
+          setor_id: setorId,
+          nome: indicador.trim(),
+          ic_iv: icIv,
+          unidade,
+          pai_id: icIv === "IV" ? paiId : undefined,
+          produto_id: icIv === "IC" && produtoId ? produtoId : undefined,
+          agrega_ivs: icIv === "IC" ? agregaIvs : undefined,
+          tipo_acumulado_meta: tipoAcumulado,
+          tipo_acumulado_real: tipoAcumulado,
+          tipo_agregacao_meta: icIv === "IC" && agregaIvs ? tipoAgregacaoMeta : undefined,
+          tipo_agregacao_real: icIv === "IC" && agregaIvs ? tipoAgregacaoReal : undefined,
+        });
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "Erro ao criar o indicador");
+        return;
+      }
 
       try {
         await onSalvar({
@@ -157,6 +172,11 @@ export function CriarMetaModal({
           <label className="form-group">
             Indicador
             <input className="form-input" value={indicador} onChange={(e) => setIndicador(e.target.value)} />
+            {nomeDuplicado && (
+              <span style={{ color: "var(--warning)", fontSize: "0.85em" }}>
+                Já existe um indicador com esse nome neste setor.
+              </span>
+            )}
           </label>
 
           <label className="form-group">

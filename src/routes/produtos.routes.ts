@@ -6,6 +6,7 @@ import { authenticate, authorize, resolveSetorId } from "../middleware/auth";
 import { badRequest, conflict, notFound } from "../lib/errors";
 import { registrarAuditoria } from "../lib/auditoria";
 import { parsePagination, paginatedResponse } from "../lib/pagination";
+import { garantirSetorAtivo } from "../lib/setor";
 
 export const produtosRouter = Router();
 produtosRouter.use(authenticate);
@@ -93,6 +94,7 @@ produtosRouter.post("/", authorize("gerente"), async (req, res, next) => {
     const body = criarProdutoSchema.parse(req.body);
     const usuario = req.usuario!;
     const setorId = resolveSetorId(usuario, body.setor_id);
+    await garantirSetorAtivo(setorId);
 
     const existente = await prisma.produto.findFirst({ where: { nome: body.nome, setorId } });
     if (existente) throw conflict("Já existe um produto com esse nome neste setor");

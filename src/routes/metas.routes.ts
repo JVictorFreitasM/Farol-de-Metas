@@ -7,6 +7,7 @@ import { authenticate, authorize, resolveSetorId } from "../middleware/auth";
 import { badRequest, conflict, forbidden, notFound } from "../lib/errors";
 import { registrarAuditoria } from "../lib/auditoria";
 import { garantirMesesAbertos } from "../lib/fechamento";
+import { garantirSetorAtivo } from "../lib/setor";
 import { MetaComRelacoes, serializeMeta } from "../lib/serializers";
 import { resolverAcumuloEspecifico } from "../lib/acumuloEspecifico";
 import {
@@ -564,6 +565,7 @@ metasRouter.post("/", authorize("gerente"), async (req, res, next) => {
     if (!indicador) throw notFound("Indicador não encontrado");
     if (!indicador.ativo) throw conflict("Este indicador está inativo");
     resolveSetorId(usuario, indicador.setorId);
+    await garantirSetorAtivo(indicador.setorId);
 
     const existente = await prisma.meta.findFirst({ where: { indicadorId: indicador.id, ano: body.ano } });
     if (existente) throw conflict("Já existe uma meta para este indicador neste ano");
@@ -647,6 +649,9 @@ metasRouter.put("/:id/meta", authorize("gerente", "admin"), async (req, res, nex
 
     const metaAtual = await prisma.meta.findUnique({ where: { id: req.params.id }, include: includeRelacoes });
     if (!metaAtual) throw notFound("Meta não encontrada");
+    // OS-020: setor inativo trava edição de valores de Meta existentes — `setor` já vem
+    // carregado via includeRelacoes, sem consulta extra.
+    if (!metaAtual.setor.ativo) throw conflict("Este setor está inativo e não permite novos lançamentos");
 
     // tipo_agregacao_meta="meta_manual": Meta é digitada mês a mês pelo gerente mesmo com
     // agrega_ivs=true (só o Real é calculado automaticamente dos IVs, nesse caso).
@@ -786,6 +791,8 @@ metasRouter.put("/:id/real", authorize("responsavel", "gerente", "admin"), async
     if (usuario.role !== "admin" && metaAtual.setorId !== usuario.setorId) {
       throw forbidden("Acesso negado a outro setor");
     }
+    // OS-020: setor inativo trava edição de valores de Meta existentes.
+    if (!metaAtual.setor.ativo) throw conflict("Este setor está inativo e não permite novos lançamentos");
 
     if (metaAtual.indicador.agregaIvs) {
       throw conflict("Este IC agrega os valores dos IVs automaticamente e não pode ser editado diretamente.");
@@ -1072,7 +1079,7 @@ metasRouter.post("/importar-ano", authorize("gerente", "admin"), async (req, res
             acao: "CREATE",
             tabela: "metas",
             registroId: meta.id,
-            setorId,
+             setorId, 
             detalhes: { origem: "importacao_ano", ano_origem: body.ano_origem, ano_destino: body.ano_destino },
           },
           tx

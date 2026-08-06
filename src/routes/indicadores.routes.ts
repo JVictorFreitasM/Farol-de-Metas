@@ -5,6 +5,7 @@ import { prisma } from "../lib/prisma";
 import { authenticate, authorize, resolveSetorId } from "../middleware/auth";
 import { badRequest, conflict, notFound } from "../lib/errors";
 import { registrarAuditoria } from "../lib/auditoria";
+import { garantirSetorAtivo } from "../lib/setor";
 
 export const indicadoresRouter = Router();
 indicadoresRouter.use(authenticate);
@@ -59,7 +60,9 @@ indicadoresRouter.get("/", async (req, res, next) => {
 
 const criarIndicadorSchema = z.object({
   setor_id: z.string().uuid(),
-  nome: z.string().min(1),
+  // OS-019: trim() aqui pra "PMF" e "PMF " (com espaço) caírem na mesma checagem de duplicidade
+  // abaixo, em vez de virarem dois indicadores "iguais" na prática mas com nomes distintos.
+  nome: z.string().trim().min(1),
   ic_iv: z.nativeEnum(IcIv),
   unidade: z.string().min(1),
   pai_id: z.string().uuid().optional(),
@@ -79,6 +82,7 @@ indicadoresRouter.post("/", authorize("gerente", "admin"), async (req, res, next
   try {
     const body = criarIndicadorSchema.parse(req.body);
     const setorId = resolveSetorId(req.usuario!, body.setor_id);
+    await garantirSetorAtivo(setorId);
 
     if (body.ic_iv === "IV" && !body.pai_id) {
       throw badRequest("IVs devem ter um indicador pai (pai_id)");
@@ -87,7 +91,12 @@ indicadoresRouter.post("/", authorize("gerente", "admin"), async (req, res, next
       throw badRequest("ICs não podem ter pai_id");
     }
 
-    const existente = await prisma.indicador.findFirst({ where: { nome: body.nome, setorId } });
+    // OS-019: comparação case-insensitive — "PMF" e "pmf" são o mesmo indicador na prática.
+    // mode: "insensitive" usa ILIKE no Postgres, que já resolve corretamente maiúscula/minúscula
+    // em nomes acentuados (ex.: "Aderência") sob a collation UTF8 padrão do banco.
+    const existente = await prisma.indicador.findFirst({
+      where: { nome: { equals: body.nome, mode: "insensitive" }, setorId },
+    });
     if (existente) throw conflict("Já existe um indicador com esse nome neste setor");
 
     const indicador = await prisma.$transaction(async (tx) => {
@@ -125,7 +134,7 @@ indicadoresRouter.post("/", authorize("gerente", "admin"), async (req, res, next
 });
 
 const editarIndicadorSchema = z.object({
-  nome: z.string().min(1).optional(),
+  nome: z.string().trim().min(1).optional(),
   unidade: z.string().min(1).optional(),
   produto_id: z.string().uuid().nullable().optional(),
   agrega_ivs: z.boolean().optional(),
@@ -145,9 +154,18 @@ indicadoresRouter.patch("/:id", authorize("gerente", "admin"), async (req, res, 
     const indicadorAtual = await prisma.indicador.findUnique({ where: { id: req.params.id } });
     if (!indicadorAtual) throw notFound("Indicador não encontrado");
 
-    if (body.nome) {
+    // Só checa duplicidade quando o nome de fato muda (case-insensitive) — um client que reenvia
+    // o nome atual sem alteração (comum em PATCH "objeto completo") não pode ficar preso por
+    // colidir consigo mesmo, nem por uma duplicidade pré-existente noutro campo que nem está
+    // sendo editado (achado testando esta OS: dados reais já tinham "pmf"/"PMf"/"PMF" como três
+    // indicadores distintos, sobreviventes da checagem case-sensitive antiga).
+    if (body.nome && body.nome.toLowerCase() !== indicadorAtual.nome.toLowerCase()) {
       const duplicado = await prisma.indicador.findFirst({
-        where: { nome: body.nome, setorId: indicadorAtual.setorId, id: { not: indicadorAtual.id } },
+        where: {
+          nome: { equals: body.nome, mode: "insensitive" },
+          setorId: indicadorAtual.setorId,
+          id: { not: indicadorAtual.id },
+        },
       });
       if (duplicado) throw badRequest("Já existe um indicador com esse nome neste setor");
     }

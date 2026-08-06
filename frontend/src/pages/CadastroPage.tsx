@@ -4,19 +4,24 @@ import { ProdutosTable } from "../components/ProdutosTable";
 import { ProdutosModal } from "../components/ProdutosModal";
 import { IndicadoresTable } from "../components/IndicadoresTable";
 import { CriarMetaModal } from "../components/CriarMetaModal";
+import { EditarIndicadorModal } from "../components/EditarIndicadorModal";
+import { SetoresTable } from "../components/SetoresTable";
+import { SetoresModal } from "../components/SetoresModal";
 import { useAuth } from "../hooks/useAuth";
 import { useProdutos } from "../hooks/useProdutos";
 import { useMetas } from "../hooks/useMetas";
 import { useIndicadores } from "../hooks/useIndicadores";
+import { useSetores } from "../hooks/useSetores";
 import { useAnoSelecionado } from "../hooks/useAnoSelecionado";
 import { useSetorSelecionado } from "../hooks/useSetorSelecionado";
 import { listarSetores } from "../services/metasService";
-import { Produto, Setor, StatusProduto } from "../types";
+import { Indicador, Produto, Setor, StatusProduto } from "../types";
 
-type Aba = "produtos" | "indicadores";
+type Aba = "produtos" | "indicadores" | "setores";
 
 export function CadastroPage() {
   const { usuario } = useAuth();
+  const ehAdmin = usuario?.role === "admin";
   const podeGerenciar = usuario?.role === "admin" || usuario?.role === "gerente";
   const podeCriar = usuario?.role === "gerente";
 
@@ -29,10 +34,18 @@ export function CadastroPage() {
   const [modalProdutoAberto, setModalProdutoAberto] = useState(false);
   const [produtoEditando, setProdutoEditando] = useState<Produto | null>(null);
   const [modalIndicadorAberto, setModalIndicadorAberto] = useState(false);
+  const [indicadorEditando, setIndicadorEditando] = useState<Indicador | null>(null);
+  const [modalSetorAberto, setModalSetorAberto] = useState(false);
+  const [setorEditando, setSetorEditando] = useState<Setor | null>(null);
   const [ano] = useAnoSelecionado();
 
+  // OS-020: extraído de um useEffect(..., []) que só rodava uma vez no mount — a lista de
+  // setores ativos usada no filtro/seletor desta página ficava desatualizada depois de
+  // criar/inativar/ativar um setor na aba Setores, só refletindo após reload manual. Reexecutado
+  // depois de qualquer mutação de setor (ver handlers da aba Setores abaixo).
+  const carregarSetoresAtivos = () => listarSetores().then(setSetores);
   useEffect(() => {
-    listarSetores().then(setSetores);
+    carregarSetoresAtivos();
   }, []);
 
   const { produtos, totalPaginas, loading, criar, editar, deletar } = useProdutos({
@@ -58,11 +71,26 @@ export function CadastroPage() {
     indicadores,
     loading: loadingIndicadores,
     recarregar: recarregarIndicadores,
+    editar: editarIndicador,
+    deletar: inativarIndicador,
+    ativar: ativarIndicador,
   } = useIndicadores({ setor_id: setorId, incluir_inativos: true });
+
+  // Setores não é escopado por setor_id (é o próprio recurso sendo gerido) — incluir_inativos:
+  // true sempre, pra tela de gestão poder reativar. Só admin vê a aba, mas o hook roda pro app
+  // inteiro igual aos outros nesta página (mesmo padrão: hooks chamados incondicionalmente).
+  const {
+    setores: setoresGerenciaveis,
+    loading: loadingSetores,
+    criar: criarSetor,
+    editar: editarSetor,
+    inativar: inativarSetor,
+    ativar: ativarSetor,
+  } = useSetores({ incluir_inativos: true });
 
   const filtros = (
     <div className="filtros">
-      {podeGerenciar && (
+      {podeGerenciar && aba !== "setores" && (
         <label>
           Setor
           <select value={setorId ?? ""} onChange={(e) => { setSetorId(e.target.value || undefined); setPagina(1); }}>
@@ -92,6 +120,9 @@ export function CadastroPage() {
       <div className="tabs">
         <button className={aba === "produtos" ? "active" : ""} onClick={() => setAba("produtos")}>Produtos</button>
         <button className={aba === "indicadores" ? "active" : ""} onClick={() => setAba("indicadores")}>Indicadores</button>
+        {ehAdmin && (
+          <button className={aba === "setores" ? "active" : ""} onClick={() => setAba("setores")}>Setores</button>
+        )}
       </div>
     </div>
   );
@@ -173,8 +204,11 @@ export function CadastroPage() {
               ano={ano}
               metasPorIndicadorId={metasPorIndicadorId}
               podeGerenciar={podeGerenciar}
-              onInativar={inativarMeta}
-              onAtivar={ativarMeta}
+              onEditar={(indicador) => setIndicadorEditando(indicador)}
+              onInativarIndicador={inativarIndicador}
+              onAtivarIndicador={ativarIndicador}
+              onInativarAno={inativarMeta}
+              onAtivarAno={ativarMeta}
             />
           )}
 
@@ -189,6 +223,58 @@ export function CadastroPage() {
                 setModalIndicadorAberto(false);
               }}
               onFechar={() => setModalIndicadorAberto(false)}
+            />
+          )}
+
+          {indicadorEditando && (
+            <EditarIndicadorModal
+              indicador={indicadorEditando}
+              onSalvar={editarIndicador}
+              onFechar={() => setIndicadorEditando(null)}
+            />
+          )}
+        </>
+      )}
+
+      {aba === "setores" && ehAdmin && (
+        <>
+          <div className="metas-toolbar">
+            <button className="btn-primary" onClick={() => { setSetorEditando(null); setModalSetorAberto(true); }}>
+              + Novo setor
+            </button>
+          </div>
+
+          {loadingSetores && <p>Carregando...</p>}
+          {!loadingSetores && (
+            <SetoresTable
+              setores={setoresGerenciaveis}
+              onEditar={(s) => { setSetorEditando(s); setModalSetorAberto(true); }}
+              onInativar={async (s) => {
+                if (confirm(`Inativar o setor "${s.nome}"? Nada é apagado — só bloqueia novos lançamentos vinculados a ele.`)) {
+                  await inativarSetor(s.id);
+                  await carregarSetoresAtivos();
+                }
+              }}
+              onAtivar={async (s) => {
+                await ativarSetor(s.id);
+                await carregarSetoresAtivos();
+              }}
+            />
+          )}
+
+          {modalSetorAberto && (
+            <SetoresModal
+              setor={setorEditando}
+              onSalvar={async (body) => {
+                if (setorEditando) {
+                  await editarSetor(setorEditando.id, body);
+                } else {
+                  await criarSetor({ nome: body.nome, email: body.email ?? undefined });
+                }
+                await carregarSetoresAtivos();
+                setModalSetorAberto(false);
+              }}
+              onFechar={() => setModalSetorAberto(false)}
             />
           )}
         </>

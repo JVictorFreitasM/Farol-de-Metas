@@ -37,28 +37,51 @@ export function useIndicadores(params: ListarIndicadoresParams) {
     carregar();
   }, [carregar]);
 
+  // OS-019: criar/editar/deletar/ativar seguem o mesmo padrão de useProdutos.ts — toast.error +
+  // re-throw, pra quem chamar poder reagir (ex: manter modal aberto) sem deixar o erro passar em
+  // silêncio quando não trata (a lacuna que motivou esta OS: nenhum desses tinha catch próprio).
   const criar = async (body: CriarIndicadorBody) => {
-    const indicador = await criarIndicador(body);
-    await carregar();
-    return indicador;
+    try {
+      const indicador = await criarIndicador(body);
+      await carregar();
+      return indicador;
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro ao criar indicador");
+      throw err;
+    }
   };
 
   const editar = async (id: string, body: EditarIndicadorBody) => {
-    await editarIndicador(id, body);
-    toast.success("Indicador atualizado!");
-    await carregar();
+    try {
+      await editarIndicador(id, body);
+      toast.success("Indicador atualizado!");
+      await carregar();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro ao editar indicador");
+      throw err;
+    }
   };
 
   const deletar = async (id: string) => {
-    await deletarIndicador(id);
-    toast.success("Indicador inativado!");
-    await carregar();
+    try {
+      await deletarIndicador(id);
+      toast.success("Indicador inativado!");
+      await carregar();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro ao inativar indicador");
+      throw err;
+    }
   };
 
   const ativar = async (id: string) => {
-    await editarIndicador(id, { ativo: true });
-    toast.success("Indicador ativado!");
-    await carregar();
+    try {
+      await editarIndicador(id, { ativo: true });
+      toast.success("Indicador ativado!");
+      await carregar();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro ao ativar indicador");
+      throw err;
+    }
   };
 
   return { indicadores, loading, recarregar: carregar, criar, editar, deletar, ativar };

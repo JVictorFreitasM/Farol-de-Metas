@@ -18,6 +18,11 @@ export interface Setor {
   id: string;
   nome: string;
   email: string | null;
+  // OS-020: GET /setores agora sempre inclui esses campos (aditivo — consumidores antigos que só
+  // leem id/nome/email continuam funcionando sem alteração).
+  ativo: boolean;
+  criado_em: string;
+  atualizado_em: string;
 }
 
 // OS-016: configuração global de fechamento mensal (singleton) e desbloqueios pontuais por setor/mês.
