@@ -161,18 +161,28 @@ model Indicador {
   @@map("indicadores")
 }
 
+// OS-009-B: autenticação migrou para o IdP externo. senhaHash e role permanecem no
+// schema como legado (não mais escritos/verificados em nenhum fluxo de login ou troca de
+// papel) — mantidos apenas para não quebrar relações antigas e evitar uma migration
+// destrutiva nesta etapa. A fonte de verdade de identidade/papel passa a ser o token do
+// IdP; idpUserId é o elo entre o usuário do IdP (claim "sub") e este registro local.
 model Usuario {
   id           String    @id @default(uuid()) @db.Uuid
   email        String    @unique @db.VarChar(255)
+  /// Legado (OS-009-B): não usado para autenticação. Autenticação real é feita pelo IdP.
   senhaHash    String    @map("senha_hash") @db.VarChar(255)
   setorId      String?   @map("setor_id") @db.Uuid
   setor        Setor?    @relation(fields: [setorId], references: [id])
   nome         String    @db.VarChar(255)
+  /// Legado (OS-009-B): não é mais a fonte de verdade de autorização. A partir da OS-009-C,
+  /// o papel efetivo do usuário vem da claim "role" do token do IdP, não desta coluna.
   role         UserRole
   ativo        Boolean   @default(true)
   ultimoAcesso DateTime? @map("ultimo_acesso")
   criadoEm     DateTime  @default(now()) @map("criado_em")
   atualizadoEm DateTime  @default(now()) @map("atualizado_em")
+  /// OS-009-B: ID do usuário no IdP (claim "sub"), vinculando o token recebido a este registro.
+  idpUserId    String?   @unique @map("idp_user_id") @db.Uuid
 
   metasAtualizadas    Meta[]          @relation("MetaAtualizadoPor")
   metasInativadas     Meta[]          @relation("MetaInativadoPor")

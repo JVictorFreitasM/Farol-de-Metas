@@ -2,6 +2,11 @@
 FROM node:20-alpine AS build
 WORKDIR /app
 
+# OS-009-C: idp-client é consumido via dependência "file:./idp-client" — precisa existir e
+# já vir compilado (dist/) ANTES do npm ci do pacote raiz, senão o link local falha.
+COPY idp-client ./idp-client
+RUN npm --prefix idp-client install && npm --prefix idp-client run build
+
 COPY package.json package-lock.json ./
 RUN npm ci
 
@@ -16,6 +21,11 @@ RUN npm run build
 FROM node:20-alpine AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
+
+# idp-client/dist precisa estar presente ANTES do npm ci (mesmo motivo da etapa de build) —
+# o pacote local é resolvido por caminho relativo, não baixado de um registry.
+COPY --from=build /app/idp-client/dist ./idp-client/dist
+COPY --from=build /app/idp-client/package.json ./idp-client/package.json
 
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev

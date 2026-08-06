@@ -3,7 +3,6 @@ import { ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import { AuthProvider } from "./hooks/useAuth";
 import { ProtectedRoute } from "./components/ProtectedRoute";
-import { LoginPage } from "./pages/LoginPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { MetasPage } from "./pages/MetasPage";
 import { CadastroPage } from "./pages/CadastroPage";
@@ -16,7 +15,6 @@ export default function App() {
     <AuthProvider>
       <BrowserRouter>
         <Routes>
-          <Route path="/login" element={<LoginPage />} />
           <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
           <Route path="/metas" element={<ProtectedRoute><MetasPage /></ProtectedRoute>} />
           <Route path="/cadastro" element={<ProtectedRoute><CadastroPage /></ProtectedRoute>} />

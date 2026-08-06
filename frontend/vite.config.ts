@@ -26,6 +26,14 @@ export default defineConfig({
   server: {
     host: isDocker ? true : undefined,
     proxy: {
+      // OS-009-C: /api/auth/* (login, callback, logout do idp-client) precisa chegar ao
+      // backend COM o prefixo /api — é o que bate com o redirectUri cadastrado no IdP e com
+      // os redirects relativos que o idp-client gera (ex.: em refresh de token expirado).
+      // Precisa vir antes da regra geral "/api" abaixo (mais específica primeiro).
+      "/api/auth": {
+        target: apiProxyTarget,
+        changeOrigin: true,
+      },
       "/api": {
         target: apiProxyTarget,
         changeOrigin: true,

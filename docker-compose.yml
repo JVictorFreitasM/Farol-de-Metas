@@ -16,6 +16,18 @@ services:
     networks:
       - farol
 
+  # OS-009-C: guarda a sessão local do backend (access/refresh token do IdP — nunca no front).
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - farol
+
   backend:
     build:
       context: .
@@ -31,9 +43,14 @@ services:
       - ./src:/app/src
       - ./prisma:/app/prisma
       - ./tsconfig.json:/app/tsconfig.json
+      - ./idp-client:/app/idp-client
     depends_on:
       db:
         condition: service_healthy
+      redis:
+        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     networks:
       - farol
 

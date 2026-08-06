@@ -1,0 +1,33 @@
+{
+  "name": "@copperline/idp-client",
+  "version": "0.1.0",
+  "description": "Middleware Express de integracao com o IdP centralizado (login, callback, requireAuth, requireRole) - OS 07",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "peerDependencies": {
+    "express": "^4.17.0",
+    "express-session": "^1.17.0"
+  },
+  "dependencies": {
+    "jsonwebtoken": "^9.0.2"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/express-session": "^1.18.0",
+    "@types/jsonwebtoken": "^9.0.7",
+    "@types/node": "^22.10.2",
+    "express": "^4.21.2",
+    "express-session": "^1.18.1",
+    "typescript": "^5.7.2"
+  }
+}

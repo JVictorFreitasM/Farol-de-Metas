@@ -1,5 +1,5 @@
 import { createContext, ReactNode, useContext, useEffect, useState } from "react";
-import { login as loginRequest } from "../services/authService";
+import { getMe, loginUrl, logoutUrl, UsuarioNaoVinculadoError } from "../services/auth";
 import { ANO_SESSION_KEY } from "./useAnoSelecionado";
 import { SETOR_SESSION_KEY } from "./sessionKeys";
 import { Usuario } from "../types";
@@ -7,59 +7,48 @@ import { Usuario } from "../types";
 interface AuthContextValue {
   usuario: Usuario | null;
   loading: boolean;
-  login: (email: string, senha: string) => Promise<void>;
+  /** Não-nulo quando autenticado no IdP mas sem Usuario local vinculado (OS-009-B/C). */
+  erroVinculo: string | null;
   logout: () => void;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
-function decodeUsuarioFromToken(token: string): Usuario | null {
-  try {
-    const base64Url = token.split(".")[1];
-    const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
-    const padded = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), "=");
-    const payload = JSON.parse(atob(padded));
-    return {
-      id: payload.sub,
-      nome: payload.nome,
-      email: payload.email,
-      setor_id: payload.setorId ?? null,
-      role: payload.role,
-    };
-  } catch {
-    return null;
-  }
-}
-
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [usuario, setUsuario] = useState<Usuario | null>(null);
   const [loading, setLoading] = useState(true);
+  const [erroVinculo, setErroVinculo] = useState<string | null>(null);
 
   useEffect(() => {
-    const token = localStorage.getItem("auth_token");
-    if (token) {
-      const decoded = decodeUsuarioFromToken(token);
-      if (decoded) setUsuario(decoded);
-      else localStorage.removeItem("auth_token");
-    }
-    setLoading(false);
+    getMe()
+      .then((data) => {
+        if (data) {
+          setUsuario(data);
+        } else {
+          // Não autenticado no IdP — navegação cheia (não é chamada de API), o backend
+          // redireciona pro /authorize do IdP.
+          window.location.href = loginUrl();
+        }
+      })
+      .catch((err) => {
+        if (err instanceof UsuarioNaoVinculadoError) {
+          setErroVinculo(err.message);
+        } else {
+          setErroVinculo("Não foi possível verificar sua sessão. Tente novamente.");
+        }
+      })
+      .finally(() => setLoading(false));
   }, []);
 
-  const login = async (email: string, senha: string) => {
-    const data = await loginRequest(email, senha);
-    localStorage.setItem("auth_token", data.token);
-    setUsuario(data.usuario);
-  };
-
   const logout = () => {
-    localStorage.removeItem("auth_token");
     sessionStorage.removeItem(ANO_SESSION_KEY);
     sessionStorage.removeItem(SETOR_SESSION_KEY);
-    setUsuario(null);
-    window.location.href = "/login";
+    window.location.href = logoutUrl();
   };
 
-  return <AuthContext.Provider value={{ usuario, loading, login, logout }}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider value={{ usuario, loading, erroVinculo, logout }}>{children}</AuthContext.Provider>
+  );
 }
 
 export function useAuth(): AuthContextValue {

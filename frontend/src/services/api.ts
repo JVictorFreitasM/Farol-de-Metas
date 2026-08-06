@@ -1,5 +1,6 @@
 import { ANO_SESSION_KEY } from "../hooks/useAnoSelecionado";
 import { SETOR_SESSION_KEY } from "../hooks/sessionKeys";
+import { loginUrl } from "./auth";
 
 const API_BASE = "/api";
 
@@ -9,33 +10,34 @@ export class ApiRequestError extends Error {
   }
 }
 
-export async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const token = localStorage.getItem("auth_token");
+// OS-009-C: autenticação agora é via cookie de sessão (httpOnly, gerido pelo backend), não
+// mais Authorization: Bearer — fetch já envia cookies por padrão em requisições same-origin.
+function redirecionarParaLogin() {
+  sessionStorage.removeItem(ANO_SESSION_KEY);
+  sessionStorage.removeItem(SETOR_SESSION_KEY);
+  window.location.href = loginUrl();
+}
 
+export async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     ...(options.headers as Record<string, string>),
   };
-  if (token) headers["Authorization"] = `Bearer ${token}`;
 
-  const resp = await fetch(`${API_BASE}${path}`, { ...options, headers });
+  // redirect:"manual" — sessão/token inválido vira um 302 do backend pro login do IdP (outra
+  // origem); um fetch normal tentaria seguir esse redirect e provavelmente falharia por CORS,
+  // já que o /authorize do IdP é feito pra navegação de página inteira, não para fetch/XHR.
+  const resp = await fetch(`${API_BASE}${path}`, { ...options, headers, redirect: "manual" });
 
-  // 401 em /auth/login é falha de credenciais, não sessão expirada — segue para o
-  // tratamento padrão abaixo, que repassa a mensagem específica vinda do backend.
-  if (resp.status === 401 && path !== "/auth/login") {
-    localStorage.removeItem("auth_token");
-    sessionStorage.removeItem(ANO_SESSION_KEY);
-    sessionStorage.removeItem(SETOR_SESSION_KEY);
-    if (window.location.pathname !== "/login") {
-      window.location.href = "/login";
-    }
+  if (resp.type === "opaqueredirect") {
+    redirecionarParaLogin();
     throw new ApiRequestError(401, "Sessão expirada");
   }
 
   const body = resp.status === 204 ? null : await resp.json().catch(() => null);
 
   if (!resp.ok) {
-    throw new ApiRequestError(resp.status, body?.erro ?? `Erro ${resp.status}`);
+    throw new ApiRequestError(resp.status, body?.erro ?? body?.error ?? `Erro ${resp.status}`);
   }
 
   return body as T;
@@ -45,19 +47,10 @@ export async function apiFetch<T>(path: string, options: RequestInit = {}): Prom
  * tratamento de auth/erro do apiFetch, mas devolve o blob e o nome de arquivo sugerido pelo
  * backend (Content-Disposition) em vez de fazer parse de JSON. */
 export async function apiFetchBlob(path: string): Promise<{ blob: Blob; filename: string }> {
-  const token = localStorage.getItem("auth_token");
-  const headers: Record<string, string> = {};
-  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const resp = await fetch(`${API_BASE}${path}`, { redirect: "manual" });
 
-  const resp = await fetch(`${API_BASE}${path}`, { headers });
-
-  if (resp.status === 401) {
-    localStorage.removeItem("auth_token");
-    sessionStorage.removeItem(ANO_SESSION_KEY);
-    sessionStorage.removeItem(SETOR_SESSION_KEY);
-    if (window.location.pathname !== "/login") {
-      window.location.href = "/login";
-    }
+  if (resp.type === "opaqueredirect") {
+    redirecionarParaLogin();
     throw new ApiRequestError(401, "Sessão expirada");
   }
 
